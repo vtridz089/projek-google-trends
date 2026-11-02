@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrendWatch</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --text: #1b2330; --muted: #667085;
+    --border: #e3e7ed; --accent: #2457d6; --accent-soft: #e8eefc;
+    --up: #14804a; --up-bg: #e3f5ea; --down: #b42318; --down-bg: #fdeceb;
+    --new: #8a5a00; --new-bg: #fff2d6; --flat: #475467; --flat-bg: #eef0f3;
+    --grid: #e8ebf0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11151c; --surface: #1a2029; --text: #e8ecf2; --muted: #98a2b3;
+      --border: #2a3240; --accent: #7aa2ff; --accent-soft: #223056;
+      --up: #5fd08f; --up-bg: #163626; --down: #ff8f85; --down-bg: #3b1f1d;
+      --new: #f5c451; --new-bg: #3a2f12; --flat: #b6bfcc; --flat-bg: #262e3a;
+      --grid: #2a3240;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+           justify-content: space-between; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  select, input[type=search], button {
+    font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border);
+          border-radius: 12px; padding: 14px 16px; }
+  .kpi .label { color: var(--muted); font-size: 12.5px; }
+  .kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
+  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px;
+       padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--accent-soft); }
+  tr.row.active td { background: var(--accent-soft); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .kw { font-weight: 600; }
+  .news { color: var(--muted); font-size: 12.5px; }
+  .news a { color: var(--accent); text-decoration: none; }
+  .news a:hover { text-decoration: underline; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px;
+           font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .b-naik { background: var(--up-bg); color: var(--up); }
+  .b-turun { background: var(--down-bg); color: var(--down); }
+  .b-baru, .b-muncul { background: var(--new-bg); color: var(--new); }
+  .b-tetap, .b-baseline { background: var(--flat-bg); color: var(--flat); }
+  .chartbox { position: relative; height: 260px; }
+  .empty { padding: 36px 12px; text-align: center; color: var(--muted); }
+  #msg { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; font-size: 14px; display: none; }
+  #msg.err { display: block; background: var(--down-bg); color: var(--down); }
+  #msg.ok { display: block; background: var(--up-bg); color: var(--up); }
+  .stack { display: grid; gap: 16px; }
+  footer { margin-top: 20px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>TrendWatch</h1>
+      <div class="sub" id="sub">Memantau keyword yang sedang naik di Google Trends</div>
+    </div>
+    <div class="controls">
+      <select id="geo" aria-label="Negara">
+        <option value="ID" selected>Indonesia (ID)</option>
+        <option value="US">Amerika Serikat (US)</option>
+        <option value="GB">Inggris (GB)</option>
+        <option value="MY">Malaysia (MY)</option>
+        <option value="SG">Singapura (SG)</option>
+        <option value="IN">India (IN)</option>
+        <option value="JP">Jepang (JP)</option>
+      </select>
+      <button id="btn-collect" class="primary">Ambil data sekarang</button>
+      <button id="btn-demo" title="Isi riwayat 14 hari dengan data contoh">Isi data demo</button>
+    </div>
+  </header>
+
+  <p id="msg" role="status"></p>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="grid">
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <h2 style="margin:0">Keyword hari ini</h2>
+        <input type="search" id="filter" placeholder="Cari keyword…" aria-label="Cari keyword">
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Keyword</th><th>Status</th><th class="num">Traffic</th><th class="num">vs kemarin</th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="empty" hidden>
+        Belum ada data. Klik <b>Ambil data sekarang</b> untuk mengambil dari Google Trends,
+        atau <b>Isi data demo</b> untuk mencoba dashboard dengan data contoh.
+      </div>
+    </section>
+
+    <div class="stack">
+      <section class="card">
+        <h2 id="hist-title">Riwayat keyword</h2>
+        <div class="chartbox"><canvas id="hist"></canvas></div>
+        <div class="sub" id="hist-note">Klik salah satu baris untuk melihat riwayat traffic-nya.</div>
+      </section>
+      <section class="card">
+        <h2>Keyword teratas (7 hari terakhir)</h2>
+        <div class="chartbox"><canvas id="top"></canvas></div>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Angka traffic adalah perkiraan dari Google (mis. "50K+"), bukan volume pencarian pasti.
+    Status dihitung dari data yang tersimpan di database, jadi makin sering pengambilan data
+    dijalankan, makin berguna perbandingannya.
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let overview = null, selected = null, histChart = null, topChart = null;
+
+const fmt = new Intl.NumberFormat("id-ID");
+const STATUS_LABEL = { naik: "Naik", turun: "Turun", tetap: "Tetap", baru: "Baru",
+                       "muncul lagi": "Muncul lagi", baseline: "Hari pertama" };
+const STATUS_CLASS = { naik: "b-naik", turun: "b-turun", tetap: "b-tetap", baru: "b-baru",
+                       "muncul lagi": "b-muncul", baseline: "b-baseline" };
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function showMsg(text, kind) {
+  const el = $("msg");
+  el.textContent = text || "";
+  el.className = text ? kind : "";
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || ("Permintaan gagal (" + res.status + ")"));
+  return body;
+}
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v; else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) node.append(c);
+  return node;
+}
+
+function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : ""; }
+
+function renderKpis() {
+  const box = $("kpis"); box.replaceChildren();
+  const s = overview.summary || {};
+  const cards = [
+    ["Keyword hari ini", overview.total || 0],
+    ["Baru muncul", s["baru"] || 0],
+    ["Traffic naik", s["naik"] || 0],
+    ["Muncul lagi", s["muncul lagi"] || 0],
+  ];
+  for (const [label, value] of cards)
+    box.append(el("div", { class: "card kpi" }, [
+      el("div", { class: "label", text: label }),
+      el("div", { class: "value", text: fmt.format(value) })]));
+}
+
+function renderRows() {
+  const q = $("filter").value.trim().toLowerCase();
+  const tbody = $("rows"); tbody.replaceChildren();
+  const items = (overview.items || []).filter(i => i.keyword.toLowerCase().includes(q));
+  $("empty").hidden = (overview.items || []).length > 0;
+  for (const it of items) {
+    const kwCell = el("td", {}, [el("div", { class: "kw", text: it.keyword })]);
+    if (it.news_title) {
+      const url = safeUrl(it.news_url);
+      const title = url ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer", text: it.news_title })
+                        : document.createTextNode(it.news_title);
+      kwCell.append(el("div", { class: "news" }, [title, it.news_source ? " · " + it.news_source : ""]));
+    }
+    const change = it.change_pct == null ? "–" : (it.change_pct > 0 ? "+" : "") + it.change_pct + "%";
+    const tr = el("tr", { class: "row" + (selected === it.keyword ? " active" : "") }, [
+      kwCell,
+      el("td", {}, [el("span", { class: "badge " + (STATUS_CLASS[it.status] || "b-tetap"),
+                                 text: STATUS_LABEL[it.status] || it.status })]),
+      el("td", { class: "num", text: it.traffic_text || "–" }),
+      el("td", { class: "num", text: change }),
+    ]);
+    tr.addEventListener("click", () => selectKeyword(it.keyword));
+    tbody.append(tr);
+  }
+}
+
+function lineChart(points, label) {
+  if (histChart) histChart.destroy();
+  histChart = new Chart($("hist"), {
+    type: "line",
+    data: {
+      labels: points.map(p => p.day.slice(5)),
+      datasets: [{ label, data: points.map(p => p.traffic_num),
+                   borderColor: css("--accent"), backgroundColor: css("--accent-soft"),
+                   fill: true, tension: .25, pointRadius: 3 }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: { label: (c) => " " + points[c.dataIndex].traffic_text +
+                                          " (≈ " + fmt.format(c.parsed.y) + ")" } } },
+      scales: { x: { ticks: { color: css("--muted") }, grid: { color: css("--grid") } },
+                y: { beginAtZero: true, ticks: { color: css("--muted") }, grid: { color: css("--grid") } } },
+    },
+  });
+}
+
+async function selectKeyword(keyword) {
+  selected = keyword; renderRows();
+  $("hist-title").textContent = "Riwayat: " + keyword;
+  try {
+    const data = await api("/api/history?geo=" + $("geo").value + "&keyword=" + encodeURIComponent(keyword));
+    $("hist-note").textContent = data.points.length < 2
+      ? "Baru ada " + data.points.length + " hari data untuk keyword ini."
+      : "Perkiraan traffic per hari (dari data yang tersimpan).";
+    lineChart(data.points, keyword);
+  } catch (e) { showMsg(e.message, "err"); }
+}
+
+async function loadTop() {
+  const data = await api("/api/top?geo=" + $("geo").value + "&days=7&limit=8");
+  if (topChart) topChart.destroy();
+  topChart = new Chart($("top"), {
+    type: "bar",
+    data: { labels: data.items.map(i => i.keyword),
+            datasets: [{ data: data.items.map(i => i.total), backgroundColor: css("--accent"), borderRadius: 4 }] },
+    options: {
+      indexAxis: "y", maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+                 tooltip: { callbacks: { label: (c) => " ≈ " + fmt.format(c.parsed.x) +
+                                          " (" + data.items[c.dataIndex].days_seen + " hari)" } } },
+      scales: { x: { ticks: { color: css("--muted") }, grid: { color: css("--grid") } },
+                y: { ticks: { color: css("--muted") }, grid: { display: false } } },
+    },
+  });
+}
+
+async function load() {
+  try {
+    overview = await api("/api/overview?geo=" + $("geo").value);
+    $("sub").textContent = overview.day
+      ? "Data terakhir: " + overview.day + (overview.prev_day ? " · dibandingkan dengan " + overview.prev_day : " · belum ada hari pembanding")
+      : "Memantau keyword yang sedang naik di Google Trends";
+    renderKpis(); renderRows();
+    await loadTop();
+    if (histChart) { histChart.destroy(); histChart = null; }
+    selected = null; $("hist-title").textContent = "Riwayat keyword";
+    $("hist-note").textContent = "Klik salah satu baris untuk melihat riwayat traffic-nya.";
+    const first = (overview.items || [])[0];
+    if (first) selectKeyword(first.keyword);
+  } catch (e) { showMsg(e.message, "err"); }
+}
+
+async function act(button, path, okText) {
+  button.disabled = true; showMsg("");
+  try {
+    const r = await api(path, { method: "POST" });
+    showMsg(okText(r), "ok");
+    await load();
+  } catch (e) { showMsg(e.message, "err"); }
+  finally { button.disabled = false; }
+}
+
+$("btn-collect").addEventListener("click", (e) =>
+  act(e.target, "/api/collect?geo=" + $("geo").value, r => r.saved + " keyword tersimpan dari sumber '" + r.source + "'."));
+$("btn-demo").addEventListener("click", (e) =>
+  act(e.target, "/api/demo-seed?days=14&geo=" + $("geo").value, r => "Data demo " + r.days + " hari terisi (" + r.saved + " baris)."));
+$("geo").addEventListener("change", load);
+$("filter").addEventListener("input", () => overview && renderRows());
+load();
+</script>
+</body>
+</html>
