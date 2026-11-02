@@ -1,0 +1,37 @@
+name: Ambil data tren harian
+
+# Mengambil tren Google Trends setiap hari lalu menyimpannya ke data/snapshots.csv
+# di repo ini. Dengan begitu riwayat menumpuk walaupun tidak ada server yang menyala.
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 00:30 UTC = 07:30 WIB
+  workflow_dispatch:        # tombol "Run workflow" untuk mencoba manual
+
+permissions:
+  contents: write           # agar job boleh men-commit CSV hasilnya
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ambil data (gagal = job merah, bukan diam-diam)
+        run: python -m app.cli collect --geo ID
+      - name: Simpan CSV ke repo
+        run: |
+          if [ -n "$(git status --porcelain data/snapshots.csv)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/snapshots.csv
+            git commit -m "Data tren harian $(date -u +%F)"
+            git push
+          else
+            echo "Tidak ada perubahan data."
+          fi

@@ -1,12 +1,16 @@
 """Penyimpanan SQLite + query untuk dashboard."""
 from __future__ import annotations
 
+import csv
 import os
 import sqlite3
 from contextlib import closing
 from datetime import date, timedelta
 
-from .collector import TrendItem
+from .collector import DEMO_GEO, TrendItem
+
+CSV_FIELDS = ["geo", "day", "keyword", "traffic_text", "traffic_num",
+              "pub_date", "news_title", "news_url", "news_source"]
 
 
 def db_path() -> str:
@@ -184,3 +188,83 @@ def top_keywords(geo: str, days: int = 7, limit: int = 10) -> list[dict]:
             (geo, since, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def export_rows(geo: str | None = None, days: int | None = None) -> list[dict]:
+    """Baris mentah untuk diekspor, urut (hari, negara, keyword) agar diff-nya rapi.
+
+    Tanpa ``geo``, semua negara kecuali data demo (XX) ikut diekspor.
+    ``days`` dihitung mundur dari hari terakhir yang ada datanya.
+    """
+    where: list[str] = []
+    params: list = []
+    with closing(connect()) as conn:
+        if geo:
+            where.append("geo = ?")
+            params.append(geo)
+        else:
+            where.append("geo != ?")
+            params.append(DEMO_GEO)
+
+        if days:
+            q = "SELECT MAX(day) AS d FROM snapshots" + (" WHERE geo = ?" if geo else "")
+            latest = conn.execute(q, (geo,) if geo else ()).fetchone()["d"]
+            if not latest:
+                return []
+            since = (date.fromisoformat(latest) - timedelta(days=days - 1)).isoformat()
+            where.append("day >= ?")
+            params.append(since)
+
+        sql = (
+            "SELECT " + ", ".join(CSV_FIELDS) + " FROM snapshots WHERE "
+            + " AND ".join(where) + " ORDER BY day, geo, keyword"
+        )
+        return [dict(r) for r in conn.execute(sql, params)]
+
+
+def dump_csv(path: str) -> int:
+    """Tulis seluruh data nyata (tanpa demo) ke CSV. Dipakai agar riwayat bisa
+    disimpan di Git: berkas teks, mudah di-diff, dan bisa dimuat ulang kapan saja."""
+    rows = export_rows()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    os.replace(tmp, path)
+    return len(rows)
+
+
+def import_csv(path: str) -> tuple[int, int]:
+    """Muat CSV ke database (aman dijalankan berulang). Mengembalikan (diimpor, dilewati)."""
+    groups: dict[tuple[str, str], list[TrendItem]] = {}
+    skipped = 0
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            try:
+                geo = (row["geo"] or "").strip().upper()
+                day = date.fromisoformat((row["day"] or "").strip()).isoformat()
+                keyword = (row["keyword"] or "").strip()
+                if len(geo) != 2 or not geo.isalpha() or not keyword:
+                    raise ValueError("baris tidak valid")
+                traffic_num = int(row.get("traffic_num") or 0)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                skipped += 1
+                continue
+            groups.setdefault((geo, day), []).append(
+                TrendItem(
+                    keyword=keyword,
+                    traffic_text=row.get("traffic_text") or "",
+                    traffic_num=traffic_num,
+                    pub_date=row.get("pub_date") or "",
+                    news_title=row.get("news_title") or "",
+                    news_url=row.get("news_url") or "",
+                    news_source=row.get("news_source") or "",
+                )
+            )
+
+    imported = 0
+    for (geo, day), items in groups.items():
+        imported += save_items(geo, date.fromisoformat(day), items)
+    return imported, skipped

@@ -31,7 +31,7 @@
   h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
   .sub { color: var(--muted); font-size: 13px; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  select, input[type=search], button {
+  select, input[type=search], input[type=text], button {
     font: inherit; color: var(--text); background: var(--surface);
     border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
   button { cursor: pointer; }
@@ -65,6 +65,14 @@
   .b-turun { background: var(--down-bg); color: var(--down); }
   .b-baru, .b-muncul { background: var(--new-bg); color: var(--new); }
   .b-tetap, .b-baseline { background: var(--flat-bg); color: var(--flat); }
+  .btnlink { display: inline-block; font: inherit; color: var(--text); background: var(--surface);
+             border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; text-decoration: none; }
+  .btnlink:hover { background: var(--accent-soft); }
+  .filters { display: flex; justify-content: space-between; gap: 10px; align-items: center;
+             margin-bottom: 8px; flex-wrap: wrap; }
+  .filterctl { display: flex; gap: 8px; flex-wrap: wrap; }
+  .topicbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .topicbar input { flex: 1; min-width: 200px; }
   .chartbox { position: relative; height: 260px; }
   .empty { padding: 36px 12px; text-align: center; color: var(--muted); }
   #msg { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; font-size: 14px; display: none; }
@@ -90,9 +98,11 @@
         <option value="SG">Singapura (SG)</option>
         <option value="IN">India (IN)</option>
         <option value="JP">Jepang (JP)</option>
+        <option value="XX">Data demo (XX)</option>
       </select>
       <button id="btn-collect" class="primary">Ambil data sekarang</button>
-      <button id="btn-demo" title="Isi riwayat 14 hari dengan data contoh">Isi data demo</button>
+      <button id="btn-demo" title="Isi riwayat 14 hari dengan data contoh (terpisah dari data nyata)">Isi data demo</button>
+      <a id="btn-csv" class="btnlink" href="/api/export.csv?geo=ID&days=30" download>Unduh CSV</a>
     </div>
   </header>
 
@@ -102,9 +112,23 @@
 
   <div class="grid">
     <section class="card">
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-        <h2 style="margin:0">Keyword hari ini</h2>
-        <input type="search" id="filter" placeholder="Cari keyword…" aria-label="Cari keyword">
+      <div class="filters">
+        <h2 style="margin:0">Keyword hari ini <span class="sub" id="count"></span></h2>
+        <div class="filterctl">
+          <input type="search" id="filter" placeholder="Cari keyword…" aria-label="Cari keyword">
+          <select id="status-filter" aria-label="Filter status">
+            <option value="">Semua status</option>
+            <option value="baru">Baru</option>
+            <option value="naik">Naik</option>
+            <option value="turun">Turun</option>
+            <option value="muncul lagi">Muncul lagi</option>
+            <option value="tetap">Tetap</option>
+          </select>
+        </div>
+      </div>
+      <div class="topicbar">
+        <label for="topics" class="sub">Fokus topik</label>
+        <input type="text" id="topics" placeholder="mis. pemilu, harga, beasiswa (pisahkan dengan koma)">
       </div>
       <div class="tablewrap">
         <table>
@@ -114,6 +138,7 @@
           <tbody id="rows"></tbody>
         </table>
       </div>
+      <div class="empty" id="nomatch" hidden>Tidak ada keyword yang cocok dengan filter.</div>
       <div class="empty" id="empty" hidden>
         Belum ada data. Klik <b>Ambil data sekarang</b> untuk mengambil dari Google Trends,
         atau <b>Isi data demo</b> untuk mencoba dashboard dengan data contoh.
@@ -192,11 +217,32 @@ function renderKpis() {
       el("div", { class: "value", text: fmt.format(value) })]));
 }
 
+function topicTerms() {
+  return $("topics").value.split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+}
+
+function updateCsv() {
+  $("btn-csv").href = "/api/export.csv?geo=" + encodeURIComponent($("geo").value) + "&days=30";
+}
+
 function renderRows() {
   const q = $("filter").value.trim().toLowerCase();
+  const status = $("status-filter").value;
+  const terms = topicTerms();
   const tbody = $("rows"); tbody.replaceChildren();
-  const items = (overview.items || []).filter(i => i.keyword.toLowerCase().includes(q));
-  $("empty").hidden = (overview.items || []).length > 0;
+  const all = overview.items || [];
+  const items = all.filter(i => {
+    if (q && !i.keyword.toLowerCase().includes(q)) return false;
+    if (status && i.status !== status) return false;
+    if (terms.length) {
+      const hay = (i.keyword + " " + (i.news_title || "")).toLowerCase();
+      if (!terms.some(t => hay.includes(t))) return false;
+    }
+    return true;
+  });
+  $("count").textContent = all.length ? "(" + items.length + " dari " + all.length + ")" : "";
+  $("empty").hidden = all.length > 0;
+  $("nomatch").hidden = !(all.length > 0 && items.length === 0);
   for (const it of items) {
     const kwCell = el("td", {}, [el("div", { class: "kw", text: it.keyword })]);
     if (it.news_title) {
@@ -270,6 +316,7 @@ async function loadTop() {
 }
 
 async function load() {
+  updateCsv();
   try {
     overview = await api("/api/overview?geo=" + $("geo").value);
     $("sub").textContent = overview.day
@@ -285,11 +332,12 @@ async function load() {
   } catch (e) { showMsg(e.message, "err"); }
 }
 
-async function act(button, path, okText) {
+async function act(button, path, okText, beforeLoad) {
   button.disabled = true; showMsg("");
   try {
     const r = await api(path, { method: "POST" });
     showMsg(okText(r), "ok");
+    if (beforeLoad) beforeLoad(r);
     await load();
   } catch (e) { showMsg(e.message, "err"); }
   finally { button.disabled = false; }
@@ -298,9 +346,17 @@ async function act(button, path, okText) {
 $("btn-collect").addEventListener("click", (e) =>
   act(e.target, "/api/collect?geo=" + $("geo").value, r => r.saved + " keyword tersimpan dari sumber '" + r.source + "'."));
 $("btn-demo").addEventListener("click", (e) =>
-  act(e.target, "/api/demo-seed?days=14&geo=" + $("geo").value, r => "Data demo " + r.days + " hari terisi (" + r.saved + " baris)."));
+  act(e.target, "/api/demo-seed?days=14",
+      r => "Data demo " + r.days + " hari terisi (" + r.saved + " baris). Ditampilkan di pilihan 'Data demo (XX)'.",
+      () => { $("geo").value = "XX"; }));
 $("geo").addEventListener("change", load);
 $("filter").addEventListener("input", () => overview && renderRows());
+$("status-filter").addEventListener("change", () => overview && renderRows());
+$("topics").addEventListener("input", () => {
+  try { localStorage.setItem("trendwatch.topics", $("topics").value); } catch (_) {}
+  if (overview) renderRows();
+});
+try { $("topics").value = localStorage.getItem("trendwatch.topics") || ""; } catch (_) {}
 load();
 </script>
 </body>

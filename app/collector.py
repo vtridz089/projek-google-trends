@@ -7,8 +7,11 @@ kelas baru di sini.
 """
 from __future__ import annotations
 
+import logging
 import random
 import re
+import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -16,9 +19,19 @@ from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from typing import Protocol
 
+log = logging.getLogger("trendwatch.collector")
+
 # Namespace XML yang dipakai feed "Daily Search Trends" Google Trends.
 HT_NS = {"ht": "https://trends.google.com/trending/rss"}
 RSS_URL = "https://trends.google.com/trending/rss?geo={geo}"
+
+# Data contoh (mock/demo) selalu disimpan di kode negara "XX" supaya tidak
+# bercampur dengan data nyata dan tidak ikut masuk ke data/snapshots.csv.
+DEMO_GEO = "XX"
+
+
+class CollectorError(Exception):
+    """Pengambilan data gagal (jaringan, ditolak, feed kosong, format berubah)."""
 
 
 @dataclass
@@ -34,6 +47,11 @@ class TrendItem:
 
 class Collector(Protocol):
     def fetch(self, geo: str, day: date) -> list[TrendItem]: ...
+
+
+def target_geo(geo: str, source: str) -> str:
+    """Sumber 'mock' selalu menulis ke geo demo; sumber nyata memakai geo dari pengguna."""
+    return DEMO_GEO if source == "mock" else geo.strip().upper()
 
 
 def parse_traffic(text: str | None) -> int:
@@ -59,7 +77,11 @@ def _text(node: ET.Element, path: str) -> str:
 
 def parse_rss(xml_bytes: bytes) -> list[TrendItem]:
     """Ubah XML feed Google Trends menjadi daftar TrendItem."""
-    root = ET.fromstring(xml_bytes)
+    try:
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError as exc:
+        raise CollectorError(f"Isi feed bukan XML yang valid: {exc}") from exc
+
     items: list[TrendItem] = []
     for item in root.iter("item"):
         keyword = (item.findtext("title") or "").strip()
@@ -96,10 +118,18 @@ class RssCollector:
     Catatan: feed ini hanya memuat sekitar 10-20 tren teratas per negara,
     dan hanya menampilkan tren saat ini (bukan riwayat). Riwayat dibangun
     sendiri dengan menjalankan collector secara berkala.
+
+    Gangguan sementara (timeout, HTTP 429/5xx) dicoba ulang dengan jeda yang
+    makin panjang. Penolakan permanen (mis. HTTP 403/404) langsung gagal.
     """
 
-    def __init__(self, timeout: int = 15):
+    def __init__(self, timeout: int = 15, retries: int = 3, backoff: float = 1.0,
+                 opener=None, sleep=time.sleep):
         self.timeout = timeout
+        self.retries = max(1, retries)
+        self.backoff = backoff
+        self._open = opener or urllib.request.urlopen
+        self._sleep = sleep
 
     def fetch(self, geo: str, day: date) -> list[TrendItem]:
         url = RSS_URL.format(geo=geo.upper())
@@ -111,8 +141,40 @@ class RssCollector:
                 "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
             },
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            return parse_rss(resp.read())
+
+        last_error: Exception | None = None
+        body = b""
+        for attempt in range(1, self.retries + 1):
+            try:
+                with self._open(req, timeout=self.timeout) as resp:
+                    body = resp.read()
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code != 429 and exc.code < 500:
+                    raise CollectorError(
+                        f"Google menolak permintaan (HTTP {exc.code}) untuk {url}"
+                    ) from exc
+                last_error = exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_error = exc
+
+            if attempt < self.retries:
+                delay = self.backoff * 2 ** (attempt - 1)
+                log.warning("Percobaan %d/%d gagal (%s); ulangi dalam %.1f detik",
+                            attempt, self.retries, last_error, delay)
+                self._sleep(delay)
+        else:
+            raise CollectorError(
+                f"Gagal terhubung ke {url} setelah {self.retries} percobaan: {last_error}"
+            ) from last_error
+
+        items = parse_rss(body)
+        if not items:
+            raise CollectorError(
+                f"Feed {url} terbaca tetapi tidak berisi tren. Kemungkinan format feed berubah."
+            )
+        log.info("Feed %s: %d tren", geo.upper(), len(items))
+        return items
 
 
 _MOCK_POOL = [
