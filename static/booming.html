@@ -232,6 +232,50 @@ function why(it) {
   return "Pencarian naik " + it.label.replace(/^\+/, "+") + " dibanding periode sebelumnya.";
 }
 
+async function loadKeywordRelated(query, d, panel, button) {
+  panel.hidden = false;
+  panel.replaceChildren(el("div", { class: "sub", text: "Mengambil query terkait untuk “" + query + "”…" }));
+  button.setAttribute("aria-expanded", "true");
+  const p = new URLSearchParams({ q: query, geo: d.geo, cat: String(d.category || 0),
+                                  time: d.time, parts: "related" });
+  if ($("demo").checked) p.set("demo", "true");
+  try {
+    const result = await api("/api/explore?" + p.toString());
+    const rel = (result.related || {})[query] || Object.values(result.related || {})[0];
+    panel.replaceChildren(el("h3", { text: "Query terkait: " + query }));
+    if (!rel) {
+      panel.append(el("div", { class: "empty", text: "Query terkait tidak tersedia untuk keyword ini." }));
+      return;
+    }
+    const makeList = (title, rows, valueOf) => {
+      const ul = el("ul");
+      for (const item of (rows || []).slice(0, 10)) {
+        ul.append(el("li", {}, [
+          el("span", { text: item.query }),
+          el("span", { class: "v", text: valueOf(item) })
+        ]));
+      }
+      return el("div", {}, [
+        el("h3", { text: title }),
+        rows && rows.length ? ul : el("div", { class: "sub", text: "Tidak ada data." })
+      ]);
+    };
+    panel.append(el("div", { class: "cols2" }, [
+      makeList("Teratas (0–100)", rel.top, item => String(item.value)),
+      makeList("Sedang naik", rel.rising, item => {
+        const label = String(item.label || "");
+        if (/breakout/i.test(label)) return "Breakout";
+        if (/%/.test(label)) return label.startsWith("+") ? label : "+" + label;
+        return "+" + item.value + "%";
+      })
+    ]));
+    panel.append(el("div", { class: "sub", style: "margin-top:8px",
+                             text: "Angka pada kolom Sedang naik menunjukkan persentase kenaikan pencarian dibanding periode sebelumnya." }));
+  } catch (error) {
+    panel.replaceChildren(el("div", { class: "err", text: "Gagal mengambil query terkait: " + error.message }));
+  }
+}
+
 function row(it, d) {
   const badge = it.kind === "populer" ? el("span", { class: "badge b-tetap", text: "Populer" })
               : it.breakout ? el("span", { class: "badge b-baru", text: "▲ Breakout" })
@@ -243,13 +287,33 @@ function row(it, d) {
                            "&date=" + encodeURIComponent(d.time), target: "_blank", rel: "noopener noreferrer", text: "Google ↗" });
   const dig = el("button", { type: "button", text: "Telusuri" });
   dig.addEventListener("click", () => { $("topic").value = it.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+
+  const keywordButton = el("button", { type: "button", class: "q keyword-link",
+    text: it.query, title: "Klik untuk melihat query turunan", "aria-expanded": "false" });
+  const panel = el("div", { class: "keyword-related", hidden: "hidden" });
+  let loaded = false;
+  keywordButton.addEventListener("click", () => {
+    if (!panel.hidden) {
+      panel.hidden = true;
+      keywordButton.setAttribute("aria-expanded", "false");
+      return;
+    }
+    if (loaded) {
+      panel.hidden = false;
+      keywordButton.setAttribute("aria-expanded", "true");
+      return;
+    }
+    loaded = true;
+    loadKeywordRelated(it.query, d, panel, keywordButton);
+  });
+  const details = el("div", {}, [
+    keywordButton,
+    el("div", { class: "why", text: why(it) }),
+    panel
+  ]);
   return el("li", { class: "rankrow" }, [
     el("span", { class: "no", text: String(it.rank) }),
-    el("div", {}, [
-      el("a", { class: "q keyword-link", href: "/explore?q=" + q + "&geo=" + encodeURIComponent(d.geo) + "&cat=" + d.category + "&time=" + encodeURIComponent(d.time), text: it.query,
-                title: "Jelajahi keyword ini lebih lanjut" }),
-      el("div", { class: "why", text: why(it) })
-    ]),
+    details,
     el("div", { class: "acts" }, [badge, chart, dig, google]),
   ]);
 }
