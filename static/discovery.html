@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrendWatch · Daily Keyword Discovery</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.discovery-grid{display:grid;grid-template-columns:minmax(260px,1fr) 2fr;gap:16px}
+.discovery-grid .card{min-width:0}.watch-item,.candidate{padding:12px 0;border-bottom:1px solid var(--line,#ddd)}
+.watch-item:last-child,.candidate:last-child{border-bottom:0}
+.muted{color:var(--muted,#777);font-size:.9rem}.tag{display:inline-block;padding:3px 8px;border-radius:20px;background:#eef2f7;font-size:.78rem;margin-right:6px}
+.candidate select{margin-top:8px;max-width:170px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+@media(max-width:760px){.discovery-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body><div class="wrap">
+<nav class="tabs"><a href="/">Booming per topik</a><a href="/hari-ini">Tren hari ini</a><a href="/explore">Jelajah keyword</a><a href="/discovery" aria-current="page">Daily Discovery</a></nav>
+<header><div><h1>Daily Keyword Discovery</h1><div class="sub">Pantau topik dan kumpulkan ide keyword setiap hari.</div></div></header>
+<div class="discovery-grid">
+<section class="card">
+<h2>Topic Watchlist</h2>
+<p class="muted">Tambahkan topik yang ingin dipantau. Proses discovery memakai wilayah Indonesia secara default.</p>
+<form id="watch-form">
+<label class="field"><span>Topik</span><input id="topic" maxlength="100" placeholder="mis. pendidikan" required></label>
+<label class="field"><span>Wilayah</span><select id="geo"><option value="ID">Indonesia</option><option value="US">Amerika Serikat</option><option value="MY">Malaysia</option><option value="SG">Singapura</option></select></label>
+<button class="primary" type="submit">Tambah topik</button>
+</form>
+<div id="watchlist" class="muted">Memuat watchlist…</div>
+</section>
+<section class="card">
+<div class="toolbar"><div><h2 style="margin:0">Peluang Keyword</h2><div class="muted">Data terkait Google Trends · 7 hari terakhir</div></div><span style="flex:1"></span><button class="primary" id="run">Jalankan discovery</button><button id="reload">Muat ulang</button></div>
+<p id="message" role="status" class="muted"></p>
+<div id="results" class="muted">Belum ada hasil. Tambahkan topik lalu jalankan discovery.</div>
+</section></div>
+<footer>Angka Google Trends bersifat relatif, bukan volume pencarian. Versi awal ini mengumpulkan Related Queries. Keyword populer yang tidak tercatat naik ditandai New Candidate, bukan otomatis Hidden Opportunity. Broad Exploration dan klasifikasi historis akan ditambahkan setelah alur dasar teruji.</footer>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+async function api(url,options={}){const r=await fetch(url,{headers:{"Content-Type":"application/json"},...options});const j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.detail||"Permintaan gagal ("+r.status+")");return j}
+function node(tag,text,cls){const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n}
+async function loadWatch(){const data=await api("/api/watchlist");const box=$("watchlist");box.replaceChildren();if(!data.items.length){box.append(node("p","Belum ada topik yang dipantau.","muted"));return}for(const item of data.items){const row=node("div",null,"watch-item");const title=node("b",item.topic);row.append(title,node("div",item.geo+" · "+(item.is_active?"Aktif":"Nonaktif"),"muted"));const toggle=node("button",item.is_active?"Nonaktifkan":"Aktifkan");toggle.type="button";toggle.onclick=async()=>{await api("/api/watchlist/"+item.id,{method:"PATCH",body:JSON.stringify({active:!item.is_active})});loadWatch()};const del=node("button","Hapus");del.type="button";del.onclick=async()=>{if(confirm("Hapus topik "+item.topic+"?")){await api("/api/watchlist/"+item.id,{method:"DELETE"});loadWatch()}};row.append(toggle,del);box.append(row)}}
+async function loadResults(){const data=await api("/api/discovery");const box=$("results");box.replaceChildren();if(!data.items.length){box.append(node("p","Belum ada hasil discovery.","muted"));return}for(const item of data.items){const row=node("div",null,"candidate");row.append(node("b",item.keyword),node("div",item.watch_topic+" · "+item.discovery_date,"muted"));const category={trending:"Trending",emerging:"Emerging",new_candidate:"New Candidate"}[item.trend_category]||item.trend_category;row.append(node("span",category,"tag"));if(item.interest_score!=null)row.append(node("span","Skor relatif: "+item.interest_score,"muted"));const select=node("select");for(const s of ["New","Saved","Writing","Published","Rejected"]){const o=node("option",s);o.value=s;o.selected=item.status===s;select.append(o)}select.onchange=async()=>{await api("/api/discovery/"+item.id,{method:"PATCH",body:JSON.stringify({status:select.value})})};row.append(node("div","Status editorial"),select);box.append(row)}}
+$("watch-form").onsubmit=async e=>{e.preventDefault();try{await api("/api/watchlist",{method:"POST",body:JSON.stringify({topic:$("topic").value,geo:$("geo").value})});$("topic").value="";$("message").textContent="Topik berhasil ditambahkan.";await loadWatch()}catch(err){$("message").textContent=err.message}};
+$("run").onclick=async()=>{ $("run").disabled=true;$("message").textContent="Mengambil data dari Google Trends. Proses dapat memerlukan waktu…";try{const r=await api("/api/discovery/run",{method:"POST"});$("message").textContent="Selesai. Topik diperiksa: "+r.topics_checked+" · baris disimpan: "+r.saved+(r.errors.length?" · gagal: "+r.errors.length:"");await loadResults()}catch(err){$("message").textContent=err.message}finally{$("run").disabled=false}};
+$("reload").onclick=async()=>{try{await loadResults();await loadWatch();$("message").textContent="Data dimuat ulang."}catch(e){$("message").textContent=e.message}};
+(async()=>{try{await loadWatch();await loadResults()}catch(e){$("message").textContent=e.message}})();
+</script></body></html>
