@@ -245,7 +245,11 @@ function row(it, d) {
   dig.addEventListener("click", () => { $("topic").value = it.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
   return el("li", { class: "rankrow" }, [
     el("span", { class: "no", text: String(it.rank) }),
-    el("div", {}, [el("div", { class: "q", text: it.query }), el("div", { class: "why", text: why(it) })]),
+    el("div", {}, [
+      el("a", { class: "q keyword-link", href: "/explore?q=" + q + "&geo=" + encodeURIComponent(d.geo) + "&cat=" + d.category + "&time=" + encodeURIComponent(d.time), text: it.query,
+                title: "Jelajahi keyword ini lebih lanjut" }),
+      el("div", { class: "why", text: why(it) })
+    ]),
     el("div", { class: "acts" }, [badge, chart, dig, google]),
   ]);
 }
