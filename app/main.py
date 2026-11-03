@@ -40,6 +40,7 @@ _last_collect: dict[str, float] = {}
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     db.init_db()
+    db.discovery_init()
     csv_path = os.environ.get("TRENDWATCH_CSV", "data/snapshots.csv")
     if os.path.exists(csv_path):
         try:
@@ -228,6 +229,102 @@ def api_booming(
 @app.get("/api/booming/recent")
 def api_booming_recent(limit: int = Query(8, ge=1, le=20)):
     return {"items": db.recent_searches(limit, kind="booming")}
+
+
+
+# ------------------------------------------------------------------
+# Daily Keyword Discovery
+# ------------------------------------------------------------------
+
+@app.get("/api/watchlist")
+def api_watchlist():
+    return {"items": db.watchlist_list()}
+
+
+@app.post("/api/watchlist")
+async def api_watchlist_add(request: Request):
+    body = await request.json()
+    topic = str(body.get("topic", "")).strip()
+    if not topic or len(topic) > 100:
+        raise HTTPException(400, "Topik wajib diisi (maksimal 100 karakter).")
+    geo = _geo(str(body.get("geo", DEFAULT_GEO)))
+    try:
+        category = int(body.get("category", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Kategori tidak valid.") from None
+    return db.watchlist_add(topic, geo, category)
+
+
+@app.patch("/api/watchlist/{topic_id}")
+async def api_watchlist_toggle(topic_id: int, request: Request):
+    body = await request.json()
+    if not db.watchlist_set_active(topic_id, bool(body.get("active", True))):
+        raise HTTPException(404, "Topik tidak ditemukan.")
+    return {"ok": True}
+
+
+@app.delete("/api/watchlist/{topic_id}")
+def api_watchlist_delete(topic_id: int):
+    if not db.watchlist_delete(topic_id):
+        raise HTTPException(404, "Topik tidak ditemukan.")
+    return {"ok": True}
+
+
+@app.get("/api/discovery")
+def api_discovery(limit: int = Query(200, ge=1, le=500)):
+    return {"items": db.discovery_list(limit)}
+
+
+@app.patch("/api/discovery/{candidate_id}")
+async def api_discovery_status(candidate_id: int, request: Request):
+    body = await request.json()
+    status = str(body.get("status", "New"))
+    allowed = {"New", "Saved", "Writing", "Published", "Rejected"}
+    if status not in allowed:
+        raise HTTPException(400, "Status tidak valid.")
+    if not db.discovery_set_status(candidate_id, status):
+        raise HTTPException(404, "Keyword tidak ditemukan.")
+    return {"ok": True}
+
+
+@app.post("/api/discovery/run")
+def api_discovery_run(refresh: bool = False):
+    """Run discovery now for active watchlist topics; partial topic failures are retained."""
+    from datetime import date
+    topics = [x for x in db.watchlist_list() if x["is_active"]]
+    if not topics:
+        raise HTTPException(400, "Tambahkan minimal satu topik ke Watchlist terlebih dahulu.")
+    report = {"topics_checked": 0, "saved": 0, "errors": []}
+    day = today_local().isoformat()
+    for item in topics:
+        report["topics_checked"] += 1
+        try:
+            params = explore_service.normalize_booming(
+                item["topic"], item["geo"], item["category"], "now 7-d", "", 20
+            )
+            result = explore_service.run_booming(params, refresh=refresh)
+            rows = []
+            for candidate in result.get("items", []):
+                rising = candidate.get("kind") == "naik"
+                breakout = bool(candidate.get("breakout"))
+                rows.append({
+                    "keyword": candidate["query"],
+                    "source": "related_queries",
+                    "trend_category": "trending" if breakout else ("emerging" if rising else "new_candidate"),
+                    "interest_score": candidate.get("value"),
+                    "trend_change": candidate.get("label"),
+                    "opportunity_score": None,
+                })
+            report["saved"] += db.discovery_save(item["id"], day, rows)
+        except Exception as exc:
+            log.warning("Discovery topik '%s' gagal: %s", item["topic"], exc)
+            report["errors"].append({"topic": item["topic"], "error": str(exc)})
+    return report
+
+
+@app.get("/discovery")
+def discovery_page():
+    return FileResponse(STATIC_DIR / "discovery.html")
 
 
 @app.get("/explore")
