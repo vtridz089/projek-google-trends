@@ -62,6 +62,7 @@
   </form>
 
   <p id="msg" role="status"></p>
+  <span id="copystatus" class="sr-only" role="status" aria-live="polite"></span>
 
   <section class="card intro" id="intro">
     <p><b>Mulai dengan mengetik topik di atas, misalnya "BUMN".</b></p>
@@ -79,7 +80,7 @@
           <h2 style="margin:0" id="title"></h2>
           <div class="sub" id="subtitle"></div>
         </div>
-        <div class="actions"><button type="button" id="csv">Unduh CSV</button></div>
+        <div class="actions"><button type="button" id="copyall" title="Salin semua pencarian, satu per baris">Salin semua</button><button type="button" id="csv">Unduh CSV</button></div>
       </div>
       <ol class="ranklist" id="list"></ol>
       <div class="explain">
@@ -281,6 +282,8 @@ function row(it, d) {
   const badge = it.kind === "populer" ? el("span", { class: "badge b-tetap", text: "Populer" })
               : it.breakout ? el("span", { class: "badge b-baru", text: "▲ Breakout" })
               : el("span", { class: "badge b-naik", text: "▲ " + it.label });
+  const copy = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin “" + it.query + "”" });
+  copy.addEventListener("click", async () => flash(copy, await copyText(it.query), "“" + it.query + "” disalin"));
   const q = encodeURIComponent(it.query);
   const chart = el("a", { href: "/explore?q=" + q + "&geo=" + encodeURIComponent(d.geo) + "&cat=" + d.category +
                           "&time=" + encodeURIComponent(d.time), text: "Grafik" });
@@ -315,8 +318,31 @@ function row(it, d) {
   return el("li", { class: "rankrow" }, [
     el("span", { class: "no", text: String(it.rank) }),
     details,
-    el("div", { class: "acts" }, [badge, chart, dig, google]),
+    el("div", { class: "acts" }, [badge, copy, chart, dig, google]),
   ]);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* coba cadangan */ }
+  // Cadangan untuk koneksi non-HTTPS atau izin clipboard ditolak.
+  const ta = el("textarea", { readonly: "", "aria-hidden": "true", tabindex: "-1" });
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.append(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+  ta.remove();
+  return ok;
+}
+function flash(btn, ok, message) {
+  if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+  btn.textContent = ok ? "Tersalin ✓" : "Gagal menyalin";
+  $("copystatus").textContent = ok ? message : "Gagal menyalin. Sorot teksnya lalu salin manual.";
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { btn.textContent = btn.dataset.label; $("copystatus").textContent = ""; }, 1600);
+}
+async function copyAll() {
+  const d = state.data; if (!d) return;
+  flash($("copyall"), await copyText(d.items.map(i => i.query).join("\n")), d.items.length + " pencarian disalin");
 }
 
 function csvCell(v) {
@@ -337,6 +363,7 @@ function downloadCsv() {
 
 $("form").addEventListener("submit", (e) => { e.preventDefault(); search(); });
 $("csv").addEventListener("click", downloadCsv);
+$("copyall").addEventListener("click", copyAll);
 for (const ex of EXAMPLES) {
   const b = el("button", { type: "button", class: "chip", text: ex });
   b.addEventListener("click", () => { $("topic").value = ex; search(); });
