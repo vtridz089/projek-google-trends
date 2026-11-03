@@ -356,3 +356,126 @@ def import_csv(path: str) -> tuple[int, int]:
     for (geo, day), items in groups.items():
         imported += save_items(geo, date.fromisoformat(day), items)
     return imported, skipped
+
+
+# ------------------------------------------------------------------
+# Daily Keyword Discovery (SQLite)
+# ------------------------------------------------------------------
+
+def discovery_init() -> None:
+    """Create discovery tables without touching existing TrendWatch data."""
+    with closing(connect()) as conn, conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS topic_watchlist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic TEXT NOT NULL COLLATE NOCASE,
+                geo TEXT NOT NULL DEFAULT 'ID',
+                category INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(topic, geo, category)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS keyword_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                keyword TEXT NOT NULL COLLATE NOCASE,
+                topic_id INTEGER NOT NULL REFERENCES topic_watchlist(id) ON DELETE CASCADE,
+                discovery_date TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'related',
+                trend_category TEXT NOT NULL DEFAULT 'new_candidate',
+                interest_score INTEGER,
+                opportunity_score REAL,
+                status TEXT NOT NULL DEFAULT 'New',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(keyword, topic_id, discovery_date, source)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS keyword_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES keyword_candidates(id) ON DELETE CASCADE,
+                recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+                interest_score INTEGER,
+                trend_change TEXT,
+                source TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_candidate_date ON keyword_candidates(discovery_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_snapshot_candidate ON keyword_snapshots(candidate_id, recorded_at)")
+
+def watchlist_list() -> list[dict]:
+    with closing(connect()) as conn:
+        rows = conn.execute("SELECT * FROM topic_watchlist ORDER BY is_active DESC, topic COLLATE NOCASE").fetchall()
+    return [dict(r) for r in rows]
+
+def watchlist_add(topic: str, geo: str = "ID", category: int = 0) -> dict:
+    with closing(connect()) as conn, conn:
+        conn.execute(
+            "INSERT INTO topic_watchlist(topic, geo, category) VALUES (?, ?, ?) "
+            "ON CONFLICT(topic, geo, category) DO UPDATE SET is_active=1",
+            (topic, geo, category),
+        )
+        row = conn.execute(
+            "SELECT * FROM topic_watchlist WHERE topic=? AND geo=? AND category=?",
+            (topic, geo, category),
+        ).fetchone()
+    return dict(row)
+
+def watchlist_set_active(topic_id: int, active: bool) -> bool:
+    with closing(connect()) as conn, conn:
+        cur = conn.execute("UPDATE topic_watchlist SET is_active=? WHERE id=?", (int(active), topic_id))
+    return cur.rowcount > 0
+
+def watchlist_delete(topic_id: int) -> bool:
+    with closing(connect()) as conn, conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        cur = conn.execute("DELETE FROM topic_watchlist WHERE id=?", (topic_id,))
+    return cur.rowcount > 0
+
+def discovery_save(topic_id: int, day: str, rows: list[dict]) -> int:
+    saved = 0
+    with closing(connect()) as conn, conn:
+        for item in rows:
+            keyword = str(item.get("keyword", "")).strip()
+            if not keyword:
+                continue
+            conn.execute("""
+                INSERT INTO keyword_candidates
+                    (keyword, topic_id, discovery_date, source, trend_category, interest_score, opportunity_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(keyword, topic_id, discovery_date, source) DO UPDATE SET
+                    trend_category=excluded.trend_category,
+                    interest_score=excluded.interest_score,
+                    opportunity_score=excluded.opportunity_score
+            """, (keyword, topic_id, day, item.get("source", "related"),
+                  item.get("trend_category", "new_candidate"), item.get("interest_score"),
+                  item.get("opportunity_score")))
+            row = conn.execute("""
+                SELECT id FROM keyword_candidates
+                WHERE keyword=? AND topic_id=? AND discovery_date=? AND source=?
+            """, (keyword, topic_id, day, item.get("source", "related"))).fetchone()
+            conn.execute("""
+                INSERT INTO keyword_snapshots(candidate_id, interest_score, trend_change, source)
+                VALUES (?, ?, ?, ?)
+            """, (row["id"], item.get("interest_score"), item.get("trend_change"), item.get("source", "related")))
+            saved += 1
+    return saved
+
+def discovery_list(limit: int = 200) -> list[dict]:
+    with closing(connect()) as conn:
+        rows = conn.execute("""
+            SELECT c.*, w.topic AS watch_topic, w.geo
+            FROM keyword_candidates c JOIN topic_watchlist w ON w.id=c.topic_id
+            ORDER BY c.discovery_date DESC, COALESCE(c.opportunity_score, 0) DESC, c.keyword
+            LIMIT ?
+        """, (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+def discovery_set_status(candidate_id: int, status: str) -> bool:
+    with closing(connect()) as conn, conn:
+        cur = conn.execute(
+            "UPDATE keyword_candidates SET status=? WHERE id=?",
+            (status, candidate_id),
+        )
+    return cur.rowcount > 0
