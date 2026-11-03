@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrendWatch · Booming per topik</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+  <nav class="tabs" aria-label="Halaman">
+    <a href="/" aria-current="page">Booming per topik</a>
+    <a href="/hari-ini">Tren hari ini</a>
+    <a href="/explore">Jelajah keyword</a>
+  </nav>
+
+  <header>
+    <div>
+      <h1>Lagi booming apa?</h1>
+      <div class="sub">Ketik sebuah topik, lihat 10 pencarian yang sedang naik paling tajam di Google</div>
+    </div>
+  </header>
+
+  <form id="form" class="card searchform" autocomplete="off">
+    <label class="field">
+      <span>Topik (satu topik per pencarian)</span>
+      <input id="topic" type="text" maxlength="100" placeholder="mis. BUMN" required>
+    </label>
+    <div class="row">
+      <label class="field"><span>Periode</span>
+        <select id="time">
+          <option value="now 1-d">24 jam terakhir</option>
+          <option value="now 7-d" selected>7 hari terakhir</option>
+          <option value="today 1-m">30 hari terakhir</option>
+          <option value="today 3-m">90 hari terakhir</option>
+        </select>
+      </label>
+      <label class="field"><span>Wilayah</span>
+        <select id="geo">
+          <option value="ID" selected>Indonesia</option>
+          <option value="">Seluruh dunia</option>
+          <option value="US">Amerika Serikat</option>
+          <option value="GB">Inggris</option>
+          <option value="MY">Malaysia</option>
+          <option value="SG">Singapura</option>
+          <option value="IN">India</option>
+          <option value="JP">Jepang</option>
+          <option value="AU">Australia</option>
+        </select>
+      </label>
+      <label class="field"><span>Kategori (opsional)</span><select id="cat"><option value="0">Semua kategori</option></select></label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="go" type="submit">Tampilkan top 10</button>
+      <label class="check"><input type="checkbox" id="demo"> Pakai data contoh (tanpa Google)</label>
+      <label class="check"><input type="checkbox" id="refresh"> Abaikan cache</label>
+      <span class="status" id="status" role="status" aria-live="polite"></span>
+    </div>
+    <div class="chips" id="examples"><span class="lbl">Coba topik:</span></div>
+    <div class="chips" id="recent" hidden><span class="lbl">Pencarian terakhir:</span></div>
+  </form>
+
+  <p id="msg" role="status"></p>
+
+  <section class="card intro" id="intro">
+    <p><b>Mulai dengan mengetik topik di atas, misalnya "BUMN".</b></p>
+    <p>Daftar diambil dari <i>pencarian terkait yang sedang naik</i> di Google Trends: pencarian yang pertumbuhannya paling tajam dibanding periode sebelumnya, bukan sekadar yang paling sering dicari.</p>
+    <p>Persempit dengan <b>kategori</b> bila topiknya ambigu, atau ganti <b>periode</b> untuk melihat yang baru naik hari ini atau yang bertahan sebulan.</p>
+  </section>
+
+  <div id="results" hidden>
+    <div class="metabar" id="meta"></div>
+    <div class="notes" id="notes" hidden><ul id="notelist"></ul></div>
+
+    <section class="card">
+      <div class="cardhead">
+        <div>
+          <h2 style="margin:0" id="title"></h2>
+          <div class="sub" id="subtitle"></div>
+        </div>
+        <div class="actions"><button type="button" id="csv">Unduh CSV</button></div>
+      </div>
+      <ol class="ranklist" id="list"></ol>
+      <div class="explain">
+        <b>Breakout</b> = naik lebih dari 5.000%. <b>+N%</b> = pertumbuhan pencarian dibanding periode sebelumnya.
+        <b>Populer</b> = sering dicari, tetapi tidak tercatat naik. Angka adalah perbandingan relatif, bukan jumlah pencarian.
+      </div>
+    </section>
+
+    <section class="card" id="todaybox" style="margin-top:16px" hidden>
+      <h2 id="todaytitle"></h2>
+      <ul class="todaylist" id="todaylist"></ul>
+    </section>
+  </div>
+
+  <footer>
+    Data berasal dari Google Trends (langsung atau lewat SerpApi). Topik yang Anda ketik dikirim ke sumber data tersebut.
+    Hasil disimpan sementara (cache) agar tidak membebani sumber.
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { data: null };
+const SOURCE_LABEL = { google: "Google Trends (langsung)", serpapi: "Google Trends via SerpApi",
+                       mock: "Data contoh (bukan dari Google)" };
+const EXAMPLES = ["BUMN", "pemilu", "harga BBM", "beasiswa", "cpns", "saham"];
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) node.append(c);
+  return node;
+}
+function showMsg(text, kind) { const m = $("msg"); m.textContent = text || ""; m.className = text ? kind : ""; }
+function optionText(id, value) {
+  const o = [...$(id).options].find(x => x.value === String(value));
+  return o ? o.textContent.trim() : String(value);
+}
+async function api(path) {
+  const res = await fetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Permintaan gagal (" + res.status + ")");
+  return body;
+}
+
+async function loadCategories() {
+  try {
+    const meta = await api("/api/categories");
+    const sel = $("cat"); sel.replaceChildren();
+    for (const c of meta.categories) sel.append(el("option", { value: String(c.id), text: c.name }));
+  } catch (e) { showMsg(e.message, "err"); }
+}
+
+function setLoading(on) {
+  document.body.classList.toggle("loading", on);
+  $("go").disabled = on;
+  $("status").textContent = on ? "Mengambil data… pencarian baru bisa memakan waktu hingga 15 detik." : "";
+}
+
+function applyParams(p) {
+  if (p.topic != null) $("topic").value = p.topic;
+  if (p.geo != null) $("geo").value = p.geo;
+  if (p.category != null) $("cat").value = String(p.category);
+  if (p.time != null && [...$("time").options].some(o => o.value === p.time)) $("time").value = p.time;
+}
+
+async function search() {
+  const topic = $("topic").value.trim();
+  if (!topic) { showMsg("Masukkan sebuah topik.", "err"); return; }
+  const p = new URLSearchParams({ topic, geo: $("geo").value, cat: $("cat").value, time: $("time").value, limit: "10" });
+  if ($("demo").checked) p.set("demo", "true");
+  if ($("refresh").checked) p.set("refresh", "true");
+  setLoading(true); showMsg("");
+  try {
+    state.data = await api("/api/booming?" + p.toString());
+    render();
+    const share = new URLSearchParams({ topic, geo: $("geo").value, cat: $("cat").value, time: $("time").value });
+    if ($("demo").checked) share.set("demo", "1");
+    history.replaceState(null, "", "?" + share.toString());
+    loadRecent();
+  } catch (e) { showMsg(e.message, "err"); }
+  finally { setLoading(false); }
+}
+
+async function loadRecent() {
+  try {
+    const { items } = await api("/api/booming/recent");
+    const box = $("recent");
+    box.replaceChildren(el("span", { class: "lbl", text: "Pencarian terakhir:" }));
+    const seen = new Set();
+    for (const it of items) {
+      const key = it.topic.toLowerCase() + "|" + it.geo + "|" + it.time;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const b = el("button", { type: "button", class: "chip", text: it.topic,
+                               title: optionText("geo", it.geo) + " · " + optionText("time", it.time) });
+      b.addEventListener("click", () => { applyParams(it); search(); });
+      box.append(b);
+    }
+    box.hidden = seen.size === 0;
+  } catch (_) { /* pelengkap saja */ }
+}
+
+function render() {
+  const d = state.data;
+  $("intro").hidden = true; $("results").hidden = false;
+
+  const meta = $("meta"); meta.replaceChildren();
+  meta.append(el("span", { class: "pill" + (d.source === "mock" ? " warn" : ""), text: SOURCE_LABEL[d.source] || d.source }));
+  meta.append(el("span", { text: optionText("geo", d.geo) + " · " + optionText("time", d.time) +
+                                  (d.category ? " · " + d.category_name : "") }));
+  const when = new Date(d.fetched_at);
+  if (!isNaN(when)) meta.append(el("span", { text: "Diambil " + when.toLocaleString("id-ID") }));
+  if (d.stale) meta.append(el("span", { class: "pill warn", text: "Data lama: gagal memperbarui" }));
+  else if (d.cached) meta.append(el("span", { class: "pill", text: "Dari cache" +
+      (d.cache_age_seconds != null ? " (" + Math.max(1, Math.round(d.cache_age_seconds / 60)) + " menit lalu)" : "") }));
+  const notes = d.notes || [];
+  $("notes").hidden = notes.length === 0;
+  $("notelist").replaceChildren(...notes.map(n => el("li", { text: n })));
+
+  $("title").textContent = "Top " + d.items.length + " yang sedang booming: “" + d.topic + "”";
+  $("subtitle").textContent = d.rising_count + " naik · " + (d.items.length - d.rising_count) + " populer";
+
+  const list = $("list"); list.replaceChildren();
+  for (const it of d.items) list.append(row(it, d));
+
+  const t = d.today || { items: [] };
+  $("todaybox").hidden = !t.items.length;
+  if (t.items.length) {
+    $("todaytitle").textContent = "Juga trending hari ini terkait “" + d.topic + "” (tren harian " + t.day + ")";
+    $("todaylist").replaceChildren(...t.items.map(x => {
+      const head = el("div", {}, [el("b", { text: x.keyword }), x.traffic_text ? el("span", { class: "tr", text: "  " + x.traffic_text + " pencarian" }) : ""]);
+      const li = el("li", {}, [head]);
+      if (x.news_title) {
+        const safe = /^https?:\/\//i.test(x.news_url || "");
+        const title = safe ? el("a", { href: x.news_url, target: "_blank", rel: "noopener noreferrer", text: x.news_title }) : document.createTextNode(x.news_title);
+        li.append(el("div", { class: "tr" }, [title, x.news_source ? " · " + x.news_source : ""]));
+      }
+      return li;
+    }));
+  }
+}
+
+function why(it) {
+  if (it.kind === "populer") return "Sering dicari (skor " + it.value + " dari 100), tetapi tidak tercatat naik.";
+  if (it.breakout) return "Naik lebih dari 5.000% dibanding periode sebelumnya.";
+  return "Pencarian naik " + it.label.replace(/^\+/, "+") + " dibanding periode sebelumnya.";
+}
+
+function row(it, d) {
+  const badge = it.kind === "populer" ? el("span", { class: "badge b-tetap", text: "Populer" })
+              : it.breakout ? el("span", { class: "badge b-baru", text: "▲ Breakout" })
+              : el("span", { class: "badge b-naik", text: "▲ " + it.label });
+  const q = encodeURIComponent(it.query);
+  const chart = el("a", { href: "/explore?q=" + q + "&geo=" + encodeURIComponent(d.geo) + "&cat=" + d.category +
+                          "&time=" + encodeURIComponent(d.time), text: "Grafik" });
+  const google = el("a", { href: "https://trends.google.com/trends/explore?q=" + q + "&geo=" + encodeURIComponent(d.geo) +
+                           "&date=" + encodeURIComponent(d.time), target: "_blank", rel: "noopener noreferrer", text: "Google ↗" });
+  const dig = el("button", { type: "button", text: "Telusuri" });
+  dig.addEventListener("click", () => { $("topic").value = it.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+  return el("li", { class: "rankrow" }, [
+    el("span", { class: "no", text: String(it.rank) }),
+    el("div", {}, [el("div", { class: "q", text: it.query }), el("div", { class: "why", text: why(it) })]),
+    el("div", { class: "acts" }, [badge, chart, dig, google]),
+  ]);
+}
+
+function csvCell(v) {
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;  // cegah dibaca sebagai rumus di Excel
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function downloadCsv() {
+  const d = state.data; if (!d) return;
+  const rows = [["Peringkat", "Pencarian", "Jenis", "Pertumbuhan / skor", "Topik", "Wilayah", "Periode"]];
+  d.items.forEach(i => rows.push([i.rank, i.query, i.kind === "naik" ? "naik" : "populer", i.label, d.topic, optionText("geo", d.geo), optionText("time", d.time)]));
+  const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })),
+                      download: "booming-" + d.topic.replace(/[^\w-]+/g, "_").slice(0, 40) + ".csv" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); search(); });
+$("csv").addEventListener("click", downloadCsv);
+for (const ex of EXAMPLES) {
+  const b = el("button", { type: "button", class: "chip", text: ex });
+  b.addEventListener("click", () => { $("topic").value = ex; search(); });
+  $("examples").append(b);
+}
+
+(async function init() {
+  await loadCategories();
+  loadRecent();
+  const u = new URLSearchParams(location.search);
+  if (u.get("topic")) {
+    applyParams({ topic: u.get("topic"), geo: u.get("geo"), category: u.get("cat"), time: u.get("time") });
+    if (u.get("demo")) $("demo").checked = true;
+    search();
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrendWatch · Jelajah keyword</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <nav class="tabs" aria-label="Halaman">
+    <a href="/">Booming per topik</a><a href="/hari-ini">Tren hari ini</a><a href="/explore" aria-current="page">Jelajah keyword</a>
+  </nav>
+
+  <header>
+    <div>
+      <h1>Jelajah keyword</h1>
+      <div class="sub">Lihat minat pencarian dari waktu ke waktu untuk keyword dan kategori pilihan Anda</div>
+    </div>
+  </header>
+
+  <form id="form" class="card searchform" autocomplete="off">
+    <label class="field">
+      <span>Keyword (pisahkan dengan koma; bisa membandingkan hingga <b id="limit">5</b>)</span>
+      <input id="q" type="text" maxlength="400" placeholder="mis. beasiswa, cpns, kuliah online" required>
+    </label>
+    <div class="row">
+      <label class="field"><span>Kategori</span><select id="cat"><option value="0">Semua kategori</option></select></label>
+      <label class="field"><span>Wilayah</span>
+        <select id="geo">
+          <option value="ID" selected>Indonesia</option>
+          <option value="">Seluruh dunia</option>
+          <option value="US">Amerika Serikat</option>
+          <option value="GB">Inggris</option>
+          <option value="MY">Malaysia</option>
+          <option value="SG">Singapura</option>
+          <option value="IN">India</option>
+          <option value="JP">Jepang</option>
+          <option value="AU">Australia</option>
+        </select>
+      </label>
+      <label class="field"><span>Rentang waktu</span><select id="time"><option value="today 12-m">12 bulan terakhir</option></select></label>
+      <label class="field"><span>Jenis pencarian</span><select id="gprop"><option value="">Pencarian web</option></select></label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="go" type="submit">Cari</button>
+      <label class="check"><input type="checkbox" id="demo"> Pakai data contoh (tanpa Google)</label>
+      <label class="check"><input type="checkbox" id="refresh"> Abaikan cache</label>
+      <span class="status" id="status" role="status" aria-live="polite"></span>
+    </div>
+    <div class="chips" id="examples"><span class="lbl">Coba:</span></div>
+    <div class="chips" id="recent" hidden><span class="lbl">Pencarian terakhir:</span></div>
+  </form>
+
+  <p id="msg" role="status"></p>
+
+  <section class="card intro" id="intro">
+    <p><b>Mulai dengan mengetik keyword di atas.</b></p>
+    <p>Angka 0–100 adalah minat <i>relatif</i>: 100 = titik paling populer pada rentang dan wilayah yang dipilih, bukan jumlah pencarian.</p>
+    <p>Pilih <b>kategori</b> untuk mempersempit arti keyword, misalnya "apple" di kategori Komputer &amp; Elektronik, bukan buah.</p>
+  </section>
+
+  <div id="results" hidden>
+    <div class="metabar" id="meta"></div>
+    <div class="notes" id="notes" hidden><ul id="notelist"></ul></div>
+
+    <section class="tiles" id="tiles" aria-label="Ringkasan per keyword"></section>
+
+    <section class="card">
+      <div class="cardhead">
+        <div>
+          <h2 style="margin:0">Minat pencarian dari waktu ke waktu</h2>
+          <div class="sub">Skala 0–100 relatif, bukan jumlah pencarian</div>
+        </div>
+        <div class="actions">
+          <div class="seg" role="group" aria-label="Tampilan">
+            <button type="button" id="v-chart" aria-pressed="true">Grafik</button>
+            <button type="button" id="v-table" aria-pressed="false">Tabel</button>
+          </div>
+          <button type="button" id="csv">Unduh CSV</button>
+        </div>
+      </div>
+      <div class="legend" id="legend" hidden></div>
+      <div class="chartbox tall" id="chartbox"><canvas id="chart" aria-label="Grafik minat pencarian dari waktu ke waktu" role="img"></canvas></div>
+      <div class="tableview" id="tableview" hidden></div>
+    </section>
+
+    <div class="chips picker" id="picker" hidden><span class="lbl">Lihat query terkait dan wilayah untuk:</span></div>
+
+    <div class="two">
+      <section class="card rel" id="related"></section>
+      <section class="card" id="regions"></section>
+    </div>
+  </div>
+
+  <footer>
+    Data berasal dari Google Trends (langsung atau lewat SerpApi) dan bersifat relatif. Keyword yang Anda ketik dikirim ke sumber data tersebut.
+    Hasil disimpan sementara (cache) agar tidak membebani sumber.
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { data: null, sel: 0, view: "chart", chart: null, limit: 5, recent: [] };
+const SOURCE_LABEL = { google: "Google Trends (langsung)", serpapi: "Google Trends via SerpApi",
+                       mock: "Data contoh (bukan dari Google)" };
+const EXAMPLES = [
+  { q: "beasiswa, cpns", cat: 0 },
+  { q: "iphone, samsung, xiaomi", cat: 5 },
+  { q: "bitcoin, emas", cat: 7 },
+  { q: "banjir, gempa", cat: 0 },
+];
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function colorFor(i) { return css("--series-" + ((i % 5) + 1)); }
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) node.append(c);
+  return node;
+}
+function linekey(color) { const s = el("span", { class: "linekey" }); s.style.setProperty("--c", color); return s; }
+function showMsg(text, kind) { const m = $("msg"); m.textContent = text || ""; m.className = text ? kind : ""; }
+function optionText(id, value) {
+  const o = [...$(id).options].find(x => x.value === String(value));
+  return o ? o.textContent.trim() : String(value);
+}
+
+async function api(path) {
+  const res = await fetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const d = body.detail;
+    throw new Error(typeof d === "string" ? d : "Permintaan gagal (" + res.status + ")");
+  }
+  return body;
+}
+
+/* ---------- formulir ---------- */
+
+function parseKeywords(text) {
+  const seen = new Set(), out = [];
+  for (const part of text.split(/[,\n]/)) {
+    const kw = part.trim();
+    if (kw && !seen.has(kw.toLowerCase())) { seen.add(kw.toLowerCase()); out.push(kw); }
+  }
+  return out;
+}
+
+function fillSelect(id, items, valueKey, nameKey) {
+  const sel = $(id), keep = sel.value;
+  sel.replaceChildren();
+  for (const it of items) sel.append(el("option", { value: String(it[valueKey]), text: it[nameKey] }));
+  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+
+async function loadMeta() {
+  try {
+    const meta = await api("/api/categories");
+    state.limit = meta.limit || 5; $("limit").textContent = state.limit;
+    fillSelect("cat", meta.categories, "id", "name");
+    fillSelect("time", meta.timeframes, "value", "name");
+    fillSelect("gprop", meta.gprops, "value", "name");
+    $("time").value = "today 12-m";
+  } catch (e) { showMsg(e.message, "err"); }
+}
+
+function applyParams(p) {
+  if (p.q != null) $("q").value = p.q;
+  if (p.cat != null) $("cat").value = String(p.cat);
+  if (p.geo != null) $("geo").value = p.geo;
+  if (p.time != null) $("time").value = p.time;
+  if (p.gprop != null) $("gprop").value = p.gprop;
+}
+
+function setLoading(on) {
+  document.body.classList.toggle("loading", on);
+  $("go").disabled = on;
+  $("status").textContent = on ? "Mengambil data… pencarian baru bisa memakan waktu hingga 15 detik." : "";
+}
+
+async function search() {
+  const kws = parseKeywords($("q").value);
+  if (!kws.length) { showMsg("Masukkan minimal satu keyword.", "err"); return; }
+  if (kws.length > state.limit) { showMsg("Maksimal " + state.limit + " keyword sekali cari.", "err"); return; }
+
+  const p = new URLSearchParams();
+  kws.forEach(k => p.append("q", k));
+  p.set("geo", $("geo").value); p.set("cat", $("cat").value);
+  p.set("time", $("time").value); p.set("gprop", $("gprop").value);
+  if ($("demo").checked) p.set("demo", "true");
+  if ($("refresh").checked) p.set("refresh", "true");
+
+  setLoading(true); showMsg("");
+  try {
+    state.data = await api("/api/explore?" + p.toString());
+    state.sel = 0;
+    render();
+    const share = new URLSearchParams({ q: kws.join(","), geo: $("geo").value, cat: $("cat").value,
+                                        time: $("time").value, gprop: $("gprop").value });
+    if ($("demo").checked) share.set("demo", "1");
+    history.replaceState(null, "", "?" + share.toString());
+    loadRecent();
+  } catch (e) { showMsg(e.message, "err"); }
+  finally { setLoading(false); }
+}
+
+async function loadRecent() {
+  try {
+    const { items } = await api("/api/explore/recent");
+    const box = $("recent");
+    box.replaceChildren(el("span", { class: "lbl", text: "Pencarian terakhir:" }));
+    for (const it of items) {
+      const label = it.keywords.join(", ") + (it.category ? " · " + optionText("cat", it.category) : "");
+      const b = el("button", { type: "button", class: "chip", text: label, title: optionText("geo", it.geo) + " · " + optionText("time", it.time) });
+      b.addEventListener("click", () => {
+        applyParams({ q: it.keywords.join(", "), cat: it.category, geo: it.geo, time: it.time, gprop: it.gprop });
+        search();
+      });
+      box.append(b);
+    }
+    box.hidden = items.length === 0;
+  } catch (_) { /* daftar pencarian terakhir hanya pelengkap */ }
+}
+
+/* ---------- tampilan hasil ---------- */
+
+function render() {
+  const d = state.data;
+  $("intro").hidden = true; $("results").hidden = false;
+  renderMeta(d); renderTiles(d); renderLegend(d); renderTable(d);
+  renderPicker(d); renderRelated(d); renderRegions(d);
+  applyView();  // menggambar grafik hanya bila tampilan grafik aktif (ukuran kanvas perlu terlihat)
+}
+
+function renderMeta(d) {
+  const m = $("meta"); m.replaceChildren();
+  m.append(el("span", { class: "pill" + (d.source === "mock" ? " warn" : ""), text: SOURCE_LABEL[d.source] || d.source }));
+  m.append(el("span", { text: d.category_name + " · " + optionText("geo", d.geo) + " · " + optionText("time", d.time) }));
+  const when = new Date(d.fetched_at);
+  if (!isNaN(when)) m.append(el("span", { text: "Diambil " + when.toLocaleString("id-ID") }));
+  if (d.stale) m.append(el("span", { class: "pill warn", text: "Data lama: gagal memperbarui" }));
+  else if (d.cached) m.append(el("span", { class: "pill", text: "Dari cache" + (d.cache_age_seconds != null ? " (" + Math.max(1, Math.round(d.cache_age_seconds / 60)) + " menit lalu)" : "") }));
+  const notes = d.notes || [];
+  $("notes").hidden = notes.length === 0;
+  $("notelist").replaceChildren(...notes.map(n => el("li", { text: n })));
+}
+
+function renderTiles(d) {
+  const box = $("tiles"); box.replaceChildren();
+  d.keywords.forEach((kw, i) => {
+    const s = d.summary[i] || {};
+    const pct = s.change_pct;
+    const delta = pct == null ? "–" : (pct >= 0 ? "▲ " : "▼ ") + (pct > 0 ? "+" : "") + pct + "% vs awal periode";
+    box.append(el("div", { class: "card tile" }, [
+      el("div", { class: "name" }, [linekey(colorFor(i)), el("span", { class: "t", text: kw, title: kw })]),
+      el("div", { class: "big", text: String(s.latest ?? 0) }),
+      el("div", { class: "cap", text: "minat terbaru (0–100)" }),
+      el("div", { class: "delta", text: delta }),
+      el("div", { class: "meta", text: "Rata-rata " + (s.average ?? 0) + " · puncak " + (s.peak ?? 0) + (s.peak_label ? " (" + s.peak_label + ")" : "") }),
+    ]));
+  });
+}
+
+function renderLegend(d) {
+  const lg = $("legend"); lg.replaceChildren();
+  lg.hidden = d.keywords.length < 2;  // satu seri tidak butuh legenda
+  d.keywords.forEach((kw, i) => lg.append(el("span", { class: "item" }, [linekey(colorFor(i)), el("span", { text: kw })])));
+}
+
+const crosshair = {
+  id: "crosshair",
+  afterDatasetsDraw(chart) {
+    const active = chart.tooltip && chart.tooltip.getActiveElements ? chart.tooltip.getActiveElements() : [];
+    if (!active.length) return;
+    const x = active[0].element.x, { top, bottom } = chart.chartArea, ctx = chart.ctx;
+    ctx.save(); ctx.strokeStyle = css("--grid-strong"); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke(); ctx.restore();
+  },
+};
+
+/* Label nama di ujung garis; dilewati bila saling menimpa (legenda + tooltip yang menggantikan). */
+const endLabels = {
+  id: "endLabels",
+  afterDatasetsDraw(chart, _args, opt) {
+    if (!opt || !opt.enabled) return;
+    const items = [];
+    chart.data.datasets.forEach((ds, i) => {
+      const pts = chart.getDatasetMeta(i).data, pt = pts[pts.length - 1];
+      if (pt) items.push({ x: pt.x, y: pt.y, text: ds.label.length > 14 ? ds.label.slice(0, 13) + "…" : ds.label });
+    });
+    items.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < items.length; i++) if (items[i].y - items[i - 1].y < 14) return;
+    const ctx = chart.ctx;
+    ctx.save(); ctx.fillStyle = opt.color; ctx.font = "12px system-ui, sans-serif"; ctx.textBaseline = "middle";
+    for (const it of items) ctx.fillText(it.text, it.x + 10, it.y);
+    ctx.restore();
+  },
+};
+
+function renderChart(d) {
+  if (state.chart) state.chart.destroy();
+  const pts = d.timeline, last = pts.length - 1, single = d.keywords.length === 1;
+  const surface = css("--surface"), muted = css("--muted");
+  const wide = $("chartbox").clientWidth >= 560 && d.keywords.length <= 4;
+  const datasets = d.keywords.map((kw, i) => {
+    const c = colorFor(i);
+    return {
+      label: kw, data: pts.map(p => p.values[i]), borderColor: c,
+      backgroundColor: single ? c + "1a" : c, fill: single,
+      borderWidth: 2, tension: 0.2, borderJoinStyle: "round", borderCapStyle: "round",
+      pointRadius: pts.map((_, j) => (j === last ? 4 : 0)), pointHoverRadius: 5,
+      pointBackgroundColor: c, pointBorderColor: surface, pointBorderWidth: 2,
+      pointHoverBackgroundColor: c, pointHoverBorderColor: surface, pointHoverBorderWidth: 2,
+    };
+  });
+  state.chart = new Chart($("chart"), {
+    type: "line",
+    data: { labels: pts.map(p => p.label), datasets },
+    plugins: [crosshair, endLabels],
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      layout: { padding: { right: wide ? 96 : 8 } },
+      plugins: {
+        legend: { display: false },
+        endLabels: { enabled: wide, color: css("--text") },
+        tooltip: {
+          boxWidth: 14, boxHeight: 2,
+          callbacks: {
+            title: (items) => items[0].label + (pts[items[0].dataIndex].partial ? " (belum lengkap)" : ""),
+            label: (c) => " " + c.parsed.y + "   " + c.dataset.label,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, border: { color: css("--grid-strong") },
+             ticks: { color: muted, maxTicksLimit: 8, maxRotation: 0, autoSkip: true } },
+        y: { min: 0, max: 100, border: { display: false }, grid: { color: css("--grid"), lineWidth: 1 },
+             ticks: { color: muted, stepSize: 25 } },
+      },
+    },
+  });
+}
+
+function renderTable(d) {
+  const head = el("tr", {}, [el("th", { text: "Periode" })]);
+  d.keywords.forEach((kw, i) => head.append(el("th", { class: "num" }, [linekey(colorFor(i)), " ", kw])));
+  const body = el("tbody");
+  for (const p of d.timeline) {
+    const tr = el("tr", {}, [el("td", { text: p.label + (p.partial ? " *" : "") })]);
+    p.values.forEach(v => tr.append(el("td", { class: "num", text: String(v) })));
+    body.append(tr);
+  }
+  $("tableview").replaceChildren(el("table", {}, [el("thead", {}, [head]), body]));
+}
+
+function applyView() {
+  const chart = state.view === "chart";
+  $("chartbox").hidden = !chart; $("tableview").hidden = chart;
+  $("v-chart").setAttribute("aria-pressed", String(chart));
+  $("v-table").setAttribute("aria-pressed", String(!chart));
+  if (chart && state.data) renderChart(state.data);
+}
+
+function renderPicker(d) {
+  const box = $("picker");
+  box.hidden = d.keywords.length < 2;
+  box.replaceChildren(el("span", { class: "lbl", text: "Lihat query terkait dan wilayah untuk:" }));
+  d.keywords.forEach((kw, i) => {
+    const b = el("button", { type: "button", class: "chip", "aria-pressed": String(i === state.sel) }, [linekey(colorFor(i)), kw]);
+    b.addEventListener("click", () => { state.sel = i; renderPicker(d); renderRelated(d); renderRegions(d); });
+    box.append(b);
+  });
+}
+
+function relList(title, rows, valueOf) {
+  const ul = el("ul");
+  for (const r of rows.slice(0, 10)) {
+    const b = el("button", { type: "button", title: "Telusuri \"" + r.query + "\"", text: r.query });
+    b.addEventListener("click", () => { $("q").value = r.query; search(); });
+    ul.append(el("li", {}, [b, el("span", { class: "v", text: valueOf(r) })]));
+  }
+  return el("div", {}, [el("h3", { text: title }), rows.length ? ul : el("div", { class: "sub", text: "Tidak ada data." })]);
+}
+
+function renderRelated(d) {
+  const kw = d.keywords[state.sel], rel = (d.related || {})[kw];
+  const box = $("related"); box.replaceChildren(el("h2", { text: "Query terkait: " + kw }));
+  if (!rel) { box.append(el("div", { class: "empty", text: "Query terkait tidak tersedia untuk keyword ini." })); return; }
+  box.append(el("div", { class: "cols2" }, [
+    relList("Teratas (0–100)", rel.top || [], r => String(r.value)),
+    relList("Sedang naik", rel.rising || [], r => r.label || ("+" + r.value + "%")),
+  ]));
+  box.append(el("div", { class: "sub", style: "margin-top:8px", text: "Klik sebuah query untuk menelusurinya." }));
+}
+
+function renderRegions(d) {
+  const kw = d.keywords[state.sel], box = $("regions");
+  box.replaceChildren(el("h2", { text: "Minat menurut wilayah: " + kw }));
+  const rows = (d.regions || []).map(r => ({ name: r.name, v: r.values[state.sel] || 0 }))
+                                .filter(r => r.v > 0).sort((a, b) => b.v - a.v).slice(0, 10);
+  if (!rows.length) { box.append(el("div", { class: "empty", text: "Data wilayah tidak tersedia untuk pencarian ini." })); return; }
+  const bars = el("div", { class: "bars" });
+  for (const r of rows) {
+    const fill = el("div", { class: "fill" }); fill.style.width = r.v + "%";
+    const row = el("div", { class: "barrow", title: r.name + ": " + r.v }, [
+      el("span", { class: "nm", text: r.name }), el("div", { class: "track" }, [fill]), el("span", { class: "val", text: String(r.v) })]);
+    row.style.setProperty("--c", colorFor(state.sel));
+    bars.append(row);
+  }
+  box.append(bars, el("div", { class: "sub", style: "margin-top:8px", text: "100 = wilayah dengan minat tertinggi. 10 teratas." }));
+}
+
+/* ---------- unduh CSV ---------- */
+
+function csvCell(v) {
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;  // cegah dibaca sebagai rumus di Excel
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function downloadCsv() {
+  const d = state.data; if (!d) return;
+  const rows = [["Periode", ...d.keywords]];
+  d.timeline.forEach(p => rows.push([p.label, ...p.values]));
+  const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })),
+                      download: "trendwatch-jelajah-" + d.keywords.join("-").replace(/[^\w-]+/g, "_").slice(0, 40) + ".csv" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- inisialisasi ---------- */
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); search(); });
+$("v-chart").addEventListener("click", () => { state.view = "chart"; applyView(); });
+$("v-table").addEventListener("click", () => { state.view = "table"; applyView(); });
+$("csv").addEventListener("click", downloadCsv);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.data) render(); });
+
+for (const ex of EXAMPLES) {
+  const b = el("button", { type: "button", class: "chip", text: ex.q });
+  b.addEventListener("click", () => { applyParams({ q: ex.q, cat: ex.cat }); search(); });
+  $("examples").append(b);
+}
+
+(async function init() {
+  await loadMeta();
+  loadRecent();
+  const u = new URLSearchParams(location.search);
+  if (u.get("q")) {
+    applyParams({ q: u.get("q").split(",").join(", "), cat: u.get("cat"), geo: u.get("geo"),
+                  time: u.get("time"), gprop: u.get("gprop") });
+    if (u.get("demo")) $("demo").checked = true;
+    search();
+  }
+})();
+</script>
+</body>
+</html>

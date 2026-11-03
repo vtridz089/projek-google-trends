@@ -5,85 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TrendWatch</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<style>
-  :root {
-    --bg: #f6f7f9; --surface: #ffffff; --text: #1b2330; --muted: #667085;
-    --border: #e3e7ed; --accent: #2457d6; --accent-soft: #e8eefc;
-    --up: #14804a; --up-bg: #e3f5ea; --down: #b42318; --down-bg: #fdeceb;
-    --new: #8a5a00; --new-bg: #fff2d6; --flat: #475467; --flat-bg: #eef0f3;
-    --grid: #e8ebf0;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #11151c; --surface: #1a2029; --text: #e8ecf2; --muted: #98a2b3;
-      --border: #2a3240; --accent: #7aa2ff; --accent-soft: #223056;
-      --up: #5fd08f; --up-bg: #163626; --down: #ff8f85; --down-bg: #3b1f1d;
-      --new: #f5c451; --new-bg: #3a2f12; --flat: #b6bfcc; --flat-bg: #262e3a;
-      --grid: #2a3240;
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-           justify-content: space-between; margin-bottom: 20px; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  .sub { color: var(--muted); font-size: 13px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  select, input[type=search], input[type=text], button {
-    font: inherit; color: var(--text); background: var(--surface);
-    border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button:disabled { opacity: .6; cursor: progress; }
-  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 12px; margin-bottom: 16px; }
-  .card { background: var(--surface); border: 1px solid var(--border);
-          border-radius: 12px; padding: 14px 16px; }
-  .kpi .label { color: var(--muted); font-size: 12.5px; }
-  .kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
-  .grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; }
-  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
-  h2 { font-size: 15px; margin: 0 0 10px; }
-  .tablewrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px;
-       padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  tr.row { cursor: pointer; }
-  tr.row:hover td { background: var(--accent-soft); }
-  tr.row.active td { background: var(--accent-soft); }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .kw { font-weight: 600; }
-  .news { color: var(--muted); font-size: 12.5px; }
-  .news a { color: var(--accent); text-decoration: none; }
-  .news a:hover { text-decoration: underline; }
-  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px;
-           font-size: 12px; font-weight: 600; white-space: nowrap; }
-  .b-naik { background: var(--up-bg); color: var(--up); }
-  .b-turun { background: var(--down-bg); color: var(--down); }
-  .b-baru, .b-muncul { background: var(--new-bg); color: var(--new); }
-  .b-tetap, .b-baseline { background: var(--flat-bg); color: var(--flat); }
-  .btnlink { display: inline-block; font: inherit; color: var(--text); background: var(--surface);
-             border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; text-decoration: none; }
-  .btnlink:hover { background: var(--accent-soft); }
-  .filters { display: flex; justify-content: space-between; gap: 10px; align-items: center;
-             margin-bottom: 8px; flex-wrap: wrap; }
-  .filterctl { display: flex; gap: 8px; flex-wrap: wrap; }
-  .topicbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .topicbar input { flex: 1; min-width: 200px; }
-  .chartbox { position: relative; height: 260px; }
-  .empty { padding: 36px 12px; text-align: center; color: var(--muted); }
-  #msg { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; font-size: 14px; display: none; }
-  #msg.err { display: block; background: var(--down-bg); color: var(--down); }
-  #msg.ok { display: block; background: var(--up-bg); color: var(--up); }
-  .stack { display: grid; gap: 16px; }
-  footer { margin-top: 20px; color: var(--muted); font-size: 12.5px; }
-</style>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="wrap">
+  <nav class="tabs" aria-label="Halaman"><a href="/">Booming per topik</a><a href="/hari-ini" aria-current="page">Tren hari ini</a><a href="/explore">Jelajah keyword</a></nav>
   <header>
     <div>
       <h1>TrendWatch</h1>

@@ -18,9 +18,11 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import db
+from . import db, explore_service
+from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
+from .explore import ExploreError
 from .timeutil import today_local
 
 log = logging.getLogger("trendwatch.api")
@@ -154,9 +156,93 @@ def api_demo_seed(days: int = Query(14, ge=1, le=60)):
     return {"geo": DEMO_GEO, "days": days, "saved": total}
 
 
+@app.get("/api/categories")
+def api_categories():
+    """Pilihan untuk formulir Jelajah: kategori, rentang waktu, jenis pencarian."""
+    return {
+        "categories": [{"id": cid, "name": name} for cid, name in CATEGORIES],
+        "timeframes": [{"value": v, "name": n} for v, n in TIMEFRAMES],
+        "gprops": [{"value": v, "name": n} for v, n in GPROP_LABELS.items()],
+        "limit": explore_service.KEYWORD_LIMIT,
+    }
+
+
+@app.get("/api/explore")
+def api_explore(
+    q: list[str] = Query(default=[]),
+    geo: str = DEFAULT_GEO,
+    cat: int = 0,
+    period: str = Query("today 12-m", alias="time"),
+    gprop: str = "",
+    parts: str = "timeline,related,regions",
+    demo: bool = False,
+    refresh: bool = False,
+):
+    """Minat pencarian dari waktu ke waktu untuk keyword/kategori pilihan sendiri.
+
+    geo kosong = seluruh dunia. demo=true memakai data contoh (bukan dari Google)."""
+    try:
+        params = explore_service.normalize_params(q, geo, cat, period, gprop, parts)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        return explore_service.run(params, demo=demo, refresh=refresh)
+    except ExploreError as exc:
+        log.warning("Jelajah gagal: %s", exc)
+        detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")
+        raise HTTPException(502, detail) from exc
+
+
+@app.get("/api/explore/recent")
+def api_explore_recent(limit: int = Query(8, ge=1, le=20)):
+    return {"items": db.recent_searches(limit)}
+
+
+@app.get("/api/booming")
+def api_booming(
+    topic: str = "",
+    geo: str = DEFAULT_GEO,
+    cat: int = 0,
+    period: str = Query("now 7-d", alias="time"),
+    gprop: str = "",
+    limit: int = explore_service.BOOMING_DEFAULT_LIMIT,
+    demo: bool = False,
+    refresh: bool = False,
+):
+    """Top-N pencarian yang sedang booming untuk satu topik (mis. 'bumn').
+
+    Diambil dari 'pencarian terkait yang sedang naik' Google Trends. demo=true memakai
+    data contoh (bukan dari Google)."""
+    try:
+        params = explore_service.normalize_booming(topic, geo, cat, period, gprop, limit)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        return explore_service.run_booming(params, demo=demo, refresh=refresh)
+    except ExploreError as exc:
+        log.warning("Booming gagal: %s", exc)
+        detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")
+        raise HTTPException(502, detail) from exc
+
+
+@app.get("/api/booming/recent")
+def api_booming_recent(limit: int = Query(8, ge=1, le=20)):
+    return {"items": db.recent_searches(limit, kind="booming")}
+
+
+@app.get("/explore")
+def explore_page():
+    return FileResponse(STATIC_DIR / "explore.html")
+
+
+@app.get("/hari-ini")
+def today_page():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "booming.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

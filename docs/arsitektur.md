@@ -84,3 +84,30 @@ Status dihitung dengan membandingkan hari terakhir yang ada datanya dengan hari 
 - **Data demo dipisah (geo `XX`)** agar tidak mencemari data nyata atau CSV.
 - **Kegagalan dibuat terlihat.** Pengambilan yang gagal membuat job Actions merah, bukan sukses palsu.
 - **Pembatasan pengambilan** (jeda minimal per negara) agar tidak membanjiri sumber data.
+
+## 6. Halaman Booming dan Jelajah
+
+Dua halaman ini memakai satu lapisan sumber data (`app/explore.py`) dan satu cache SQLite.
+
+```mermaid
+flowchart LR
+    U[Pengguna<br/>mengetik topik] --> API["/api/booming<br/>/api/explore"]
+    API --> S[explore_service<br/>validasi + cache]
+    S -->|cache segar| R[Hasil]
+    S -->|cache kosong/kedaluwarsa| P{Sumber data}
+    P -->|1| G[Google Trends langsung<br/>explore → widgetdata]
+    P -->|2, bila ada SERPAPI_KEY| SA[SerpApi]
+    P -->|mode demo| M[Data contoh]
+    G --> S
+    SA --> S
+    M --> R
+    S -->|gagal tetapi ada cache lama| ST[Hasil lama + peringatan]
+    S --> R
+```
+
+- **Booming**: satu topik → `related queries` Google. Yang *naik* (rising) diurutkan Breakout lebih dulu,
+  lalu menurut persentase kenaikan; bila kurang dari 10, sisanya diisi yang *populer* (top) dan diberi label
+  berbeda agar tidak disangka ikut naik. Ditambah tren harian (RSS) yang memuat topik tersebut.
+- **Jelajah**: hingga 5 keyword → grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah.
+- Tabel tambahan: `explore_cache(cache_key, params, payload, fetched_at)`; masa berlaku Booming 1 jam,
+  Jelajah 6 jam (dapat diatur lewat variabel lingkungan).

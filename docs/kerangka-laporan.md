@@ -21,15 +21,16 @@ kampus/sekolah dan instansi Anda. Bagian bertanda **[ISI]** adalah hal yang hany
 - Visualisasi data (Chart.js).
 
 ## Bab III. Analisis dan Perancangan
-- **Analisis kebutuhan** (fungsional: ambil data, tampilkan, filter, unduh CSV; nonfungsional:
+- **Analisis kebutuhan** (fungsional: cari topik lalu tampilkan top 10 yang sedang booming, jelajah keyword dan kategori dari waktu ke waktu, tren harian, filter, unduh CSV; nonfungsional:
   tahan gangguan sumber data, mudah diganti, aman bila dipublikasikan). **[ISI]** kebutuhan dari pembimbing.
-- **Perbandingan sumber data** (API resmi alpha, pytrends yang sudah diarsipkan, API berbayar, RSS)
-  dan alasan memilih RSS.
+- **Perbandingan sumber data** (API resmi alpha, pytrends yang sudah diarsipkan, API berbayar seperti SerpApi,
+  endpoint internal Google, RSS tren harian) dan alasan memilih kombinasi endpoint internal + SerpApi cadangan + RSS.
 - **Arsitektur sistem, rancangan database, alur harian:** ambil dari [arsitektur.md](arsitektur.md).
 - **Rancangan antarmuka.** **[ISI]** tambahkan tangkapan layar.
 
 ## Bab IV. Implementasi dan Pengujian
-- Struktur proyek dan penjelasan tiap modul (`collector`, `db`, `main`, `cli`, `static/index.html`).
+- Struktur proyek dan penjelasan tiap modul (`collector`, `explore`, `explore_service`, `db`, `main`, `cli`, halaman di `static/`).
+- Cara kerja peringkat "booming" (`rank_booming`): Breakout, persentase kenaikan, dan pengisian dengan pencarian populer.
 - Implementasi penanganan kegagalan (percobaan ulang, pesan error, job Actions merah).
 - **Pengujian:** hasil `python -m pytest`, uji manual tiap tombol dan filter, uji pengambilan data
   nyata. **[ISI]** tangkapan layar hasil tes dan dashboard.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import sqlite3
 from contextlib import closing
@@ -44,6 +45,17 @@ def init_db() -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_geo_day ON snapshots (geo, day)")
+        # Cache hasil halaman Jelajah, agar pencarian yang sama tidak menembak Google/SerpApi lagi.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS explore_cache (
+                cache_key  TEXT PRIMARY KEY,
+                params     TEXT NOT NULL,
+                payload    TEXT NOT NULL,
+                fetched_at REAL NOT NULL
+            )
+            """
+        )
 
 
 def save_items(geo: str, day: date, items: list[TrendItem]) -> int:
@@ -188,6 +200,82 @@ def top_keywords(geo: str, days: int = 7, limit: int = 10) -> list[dict]:
             (geo, since, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+EXPLORE_CACHE_MAX_ROWS = 500
+
+
+def cache_get(key: str) -> tuple[dict, float] | None:
+    with closing(connect()) as conn:
+        row = conn.execute(
+            "SELECT payload, fetched_at FROM explore_cache WHERE cache_key = ?", (key,)
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["payload"]), row["fetched_at"]
+    except ValueError:
+        return None  # cache rusak dianggap tidak ada
+
+
+def cache_put(key: str, params: dict, payload: dict, now: float) -> None:
+    with closing(connect()) as conn, conn:
+        conn.execute(
+            """INSERT INTO explore_cache (cache_key, params, payload, fetched_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT (cache_key) DO UPDATE SET
+                   params = excluded.params, payload = excluded.payload,
+                   fetched_at = excluded.fetched_at""",
+            (key, json.dumps(params, ensure_ascii=False),
+             json.dumps(payload, ensure_ascii=False), now),
+        )
+        conn.execute(
+            """DELETE FROM explore_cache WHERE cache_key NOT IN
+               (SELECT cache_key FROM explore_cache ORDER BY fetched_at DESC LIMIT ?)""",
+            (EXPLORE_CACHE_MAX_ROWS,),
+        )
+
+
+def recent_searches(limit: int = 8, kind: str = "explore") -> list[dict]:
+    """Pencarian terakhir dari cache. ``kind`` memisahkan halaman Jelajah ('explore')
+    dari halaman Booming ('booming')."""
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT params FROM explore_cache ORDER BY fetched_at DESC LIMIT ?", (limit * 6,)
+        ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            p = json.loads(r["params"])
+        except ValueError:
+            continue
+        if p.get("kind", "explore") == kind:
+            out.append(p)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def today_matches(geo: str, topic: str, limit: int = 5) -> dict:
+    """Tren harian (RSS) pada hari terakhir yang keyword atau judul beritanya memuat topik.
+    Pelengkap halaman Booming; kosong bila pengambilan harian belum pernah dijalankan."""
+    empty = {"day": None, "items": []}
+    if not geo or not topic:
+        return empty
+    like = "%" + topic.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    with closing(connect()) as conn:
+        day = conn.execute("SELECT MAX(day) AS d FROM snapshots WHERE geo = ?", (geo,)).fetchone()["d"]
+        if not day:
+            return empty
+        rows = conn.execute(
+            """SELECT keyword, traffic_text, traffic_num, news_title, news_url, news_source
+               FROM snapshots
+               WHERE geo = ? AND day = ?
+                 AND (LOWER(keyword) LIKE ? ESCAPE '\\' OR LOWER(news_title) LIKE ? ESCAPE '\\')
+               ORDER BY traffic_num DESC, keyword LIMIT ?""",
+            (geo, day, like, like, limit),
+        ).fetchall()
+    return {"day": day, "items": [dict(r) for r in rows]}
 
 
 def export_rows(geo: str | None = None, days: int | None = None) -> list[dict]:
