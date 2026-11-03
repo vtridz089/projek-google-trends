@@ -255,7 +255,7 @@ async function loadKeywordRelated(query, d, panel, button) {
           el("span", { class: "v", text: valueOf(item) })
         ]));
       }
-      return el("div", {}, [
+      return el("div", { class: "rel" }, [
         el("h3", { text: title }),
         rows && rows.length ? ul : el("div", { class: "sub", text: "Tidak ada data." })
       ]);
