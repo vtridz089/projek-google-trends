@@ -137,3 +137,73 @@ def test_demo_mode_works_without_network():
     out = run_research("bumn", "ID", 0, expand=1, demo=True, refresh=True)
     assert out["source"] == "mock" and out["items"]
     assert out["items"][0]["rising_count"] >= 1 and out["expanded"] == 1
+
+
+# --------------------------------------------------------------------------- riwayat Daily Discovery
+
+
+def _save_day(topic, day, keywords, geo="ID", cat=0):
+    db.discovery_init()
+    w = db.watchlist_add(topic, geo, cat)
+    db.discovery_save(w["id"], day, [{"keyword": k, "source": "research"} for k in keywords])
+    return w
+
+
+def test_history_returns_only_earlier_days_for_same_topic():
+    _save_day("bumn", "2026-11-01", ["Danantara", "bumn lama"])
+    _save_day("bumn", "2026-11-02", ["bumn kemarin"])
+    _save_day("bumn", "2026-11-04", ["bumn hari ini"])        # hari ini tidak dihitung
+    _save_day("pemilu", "2026-11-01", ["pemilu lama"])         # topik lain
+    seen, days = db.discovery_history("BUMN", "ID", 0, "2026-11-04")
+    assert seen == {"danantara", "bumn lama", "bumn kemarin"} and days == 2
+    assert db.discovery_history("bumn", "MY", 0, "2026-11-04") == (set(), 0)
+    assert db.discovery_history("tidak ada", "ID", 0, "2026-11-04") == (set(), 0)
+
+
+def test_mark_history_flags_new_only_when_there_is_history():
+    res = {"items": [{"query": "Danantara"}, {"query": "baru sekali"}]}
+    got = explore_service.mark_history(res, {"danantara"}, 2)
+    assert [r["belum_pernah"] for r in got["items"]] == [False, True] and got["history_days"] == 2
+    res2 = explore_service.mark_history({"items": [{"query": "x"}]}, set(), 0)
+    assert res2["items"][0]["belum_pernah"] is None and res2["history_days"] == 0
+
+
+# --------------------------------------------------------------------------- API (perlu FastAPI)
+
+
+@pytest.fixture()
+def client():
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as c:
+        yield c
+
+
+def _item(k, rising=True, breakout=False):
+    return {"keyword": k, "rising": rising, "breakout": breakout, "score": 300, "label": "+300%"}
+
+
+def test_api_save_adds_watchlist_and_candidates(client):
+    r = client.post("/api/research/save", json={"topic": "bumn", "geo": "ID", "category": 0,
+                    "items": [_item("bumn a"), _item("bumn b", breakout=True), _item("bumn pop", rising=False)]})
+    assert r.status_code == 200 and r.json()["saved"] == 3
+    rows = {x["keyword"]: x for x in client.get("/api/discovery").json()["items"]}
+    assert rows["bumn b"]["trend_category"] == "trending" and rows["bumn a"]["trend_category"] == "emerging"
+    assert rows["bumn pop"]["trend_category"] == "new_candidate" and rows["bumn pop"]["interest_score"] is None
+    again = client.post("/api/research/save", json={"topic": "BUMN", "geo": "id", "items": [_item("bumn a")]})
+    assert again.status_code == 200 and len(client.get("/api/watchlist").json()["items"]) == 1
+
+
+@pytest.mark.parametrize("body", [
+    {"topic": "", "geo": "ID", "items": [_item("a")]},
+    {"topic": "x", "geo": "", "items": [_item("a")]},
+    {"topic": "x", "geo": "ID", "source": "mock", "items": [_item("a")]},
+    {"topic": "x", "geo": "ID", "items": []},
+    {"topic": "x", "geo": "ID", "items": ["bukan objek"]},
+    {"topic": "x", "geo": "ID", "items": [{"keyword": " "}]},
+])
+def test_api_save_rejects_bad_input(client, body):
+    assert client.post("/api/research/save", json=body).status_code == 400

@@ -244,11 +244,58 @@ def api_research(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     try:
-        return explore_service.run_research(topic, geo, cat, expand=expand, demo=demo, refresh=refresh)
+        result = explore_service.run_research(topic, geo, cat, expand=expand, demo=demo, refresh=refresh)
     except ExploreError as exc:
         log.warning("Riset gagal: %s", exc)
         detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")
         raise HTTPException(502, detail) from exc
+    if result.get("source") == "mock" or not result.get("geo"):
+        return explore_service.mark_history(result, set(), 0)
+    seen, days = db.discovery_history(result["topic"], result["geo"], result["category"],
+                                      today_local().isoformat())
+    return explore_service.mark_history(result, seen, days)
+
+
+@app.post("/api/research/save")
+async def api_research_save(request: Request):
+    """Simpan keyword hasil riset ke Daily Discovery (dan tambahkan topiknya ke Watchlist)."""
+    body = await request.json()
+    topic = str(body.get("topic", "")).strip()
+    if not topic or len(topic) > 100:
+        raise HTTPException(400, "Topik wajib diisi (maksimal 100 karakter).")
+    if body.get("source") == "mock":
+        raise HTTPException(400, "Data contoh tidak disimpan ke Daily Discovery.")
+    if not str(body.get("geo", "")).strip():
+        raise HTTPException(400, "Pilih satu negara (bukan seluruh dunia) untuk menyimpan ke Daily Discovery.")
+    geo = _geo(str(body.get("geo")))
+    try:
+        category = int(body.get("category", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Kategori tidak valid.") from None
+    items = body.get("items")
+    if not isinstance(items, list) or not 0 < len(items) <= 200:
+        raise HTTPException(400, "Kirim 1 sampai 200 keyword untuk disimpan.")
+    rows = []
+    for it in items:
+        if not isinstance(it, dict):
+            raise HTTPException(400, "Format keyword tidak valid.")
+        keyword = str(it.get("keyword", "")).strip()
+        if not keyword or len(keyword) > 200:
+            continue
+        try:
+            score = int(it.get("score") or 0)
+        except (TypeError, ValueError):
+            score = 0
+        rising = bool(it.get("rising"))
+        rows.append({"keyword": keyword, "source": "research",
+                     "trend_category": "trending" if it.get("breakout") else ("emerging" if rising else "new_candidate"),
+                     "interest_score": score if rising else None,
+                     "trend_change": str(it.get("label") or "")[:40], "opportunity_score": None})
+    if not rows:
+        raise HTTPException(400, "Tidak ada keyword yang valid untuk disimpan.")
+    watch = db.watchlist_add(topic, geo, category)
+    saved = db.discovery_save(watch["id"], today_local().isoformat(), rows)
+    return {"topic_id": watch["id"], "topic": watch["topic"], "saved": saved}
 
 
 @app.get("/api/booming/recent")

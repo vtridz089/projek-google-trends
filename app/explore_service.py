@@ -365,3 +365,14 @@ def run_research(topic, geo: str = "ID", category=0, *, expand: int = 3, demo: b
         "items": rows, "rising_total": sum(1 for r in rows if r["rising_count"] > 0),
         "errors": errors, "notes": notes, "expanded": len(expandable),
     }
+
+
+def mark_history(result: dict, seen: set[str], days: int) -> dict:
+    """Tandai tiap keyword: sudah pernah tersimpan di Daily Discovery atau belum.
+
+    ``belum_pernah`` bernilai None bila belum ada riwayat sama sekali (tidak ada pembanding),
+    jadi halaman tidak menampilkan "baru" secara menyesatkan pada hari pertama."""
+    result["history_days"] = days
+    for r in result["items"]:
+        r["belum_pernah"] = (r["query"].strip().lower() not in seen) if days else None
+    return result

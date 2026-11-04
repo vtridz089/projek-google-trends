@@ -479,3 +479,15 @@ def discovery_set_status(candidate_id: int, status: str) -> bool:
             (status, candidate_id),
         )
     return cur.rowcount > 0
+
+
+def discovery_history(topic: str, geo: str, category: int, before_day: str) -> tuple[set[str], int]:
+    """Keyword (huruf kecil) yang sudah tersimpan untuk topik ini sebelum ``before_day``,
+    dan berapa hari berbeda yang tercatat. (set(), 0) bila topik belum ada di Watchlist."""
+    with closing(connect()) as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT lower(c.keyword) AS k, c.discovery_date AS d
+            FROM keyword_candidates c JOIN topic_watchlist w ON w.id = c.topic_id
+            WHERE w.topic = ? AND w.geo = ? AND w.category = ? AND c.discovery_date < ?
+        """, (topic, geo, int(category), before_day)).fetchall()
+    return {r["k"] for r in rows}, len({r["d"] for r in rows})

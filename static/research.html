@@ -77,6 +77,7 @@
         </div>
         <div class="actions">
           <button type="button" id="copyall" title="Salin keyword yang sedang tampil, satu per baris">Salin semua</button>
+          <button type="button" id="save" title="Simpan keyword yang tampil ke Daily Discovery dan pantau topik ini setiap hari">Simpan ke Daily Discovery</button>
           <button type="button" id="csv">Unduh CSV</button>
         </div>
       </div>
@@ -156,9 +157,14 @@ const FILTERS = [
   ["baru", "Baru naik", r => r.pattern === "baru"],
   ["konsisten", "Naik konsisten", r => r.pattern === "konsisten"],
 ];
+function filters() {
+  const d = state.data;
+  return d && d.history_days > 0
+    ? [...FILTERS, ["belum", "Belum pernah tersimpan", r => r.belum_pernah === true]] : FILTERS;
+}
 function visibleRows() {
   const d = state.data; if (!d) return [];
-  const pass = FILTERS.find(f => f[0] === state.filter)[2];
+  const pass = filters().find(f => f[0] === state.filter)[2];
   return d.items.filter(r => pass(r) && (state.withPopular || r.rising_count > 0));
 }
 
@@ -176,6 +182,7 @@ function row(r, d) {
                            "&date=now%207-d", target: "_blank", rel: "noopener noreferrer", text: "Google ↗" });
   const tags = el("div", { class: "tags" }, [el("span", { class: "pill pat-" + r.pattern, text: PATTERN[r.pattern] })]);
   if (r.turunan) tags.append(el("span", { class: "pill", text: "turunan" }));
+  if (r.belum_pernah === true && r.rising_count > 0) tags.append(el("span", { class: "pill pat-baru", text: "belum pernah tersimpan" }));
   const li = el("li", { class: "rrow" }, [
     el("span", { class: "no", text: String(r.rank) }),
     el("div", { class: "kw-wrap" }, [el("div", { class: "kw", text: r.query }), tags]),
@@ -198,7 +205,7 @@ function renderList() {
 }
 function renderFilters() {
   const d = state.data; const box = $("filters"); box.replaceChildren(el("span", { class: "lbl", text: "Saring:" }));
-  for (const [id, name, fn] of FILTERS) {
+  for (const [id, name, fn] of filters()) {
     const n = d.items.filter(r => fn(r) && r.rising_count > 0).length;
     const b = el("button", { type: "button", class: "chip", text: name + " (" + n + ")", "aria-pressed": String(state.filter === id) });
     b.addEventListener("click", () => { state.filter = id; renderFilters(); renderList(); });
@@ -221,9 +228,19 @@ function render(d) {
   meta.append(el("span", { text: optionText("geo", d.geo) + " · " + d.rising_total + " keyword naik · " + d.expanded + " ditelusuri turunannya" }));
   const notes = [...(d.notes || [])];
   if (d.stale) notes.push("Sebagian data berasal dari cache lama karena sumber sedang gagal.");
+  if (d.source !== "mock" && d.geo) {
+    notes.push(d.history_days > 0
+      ? "Dibandingkan dengan " + d.history_days + " hari riwayat Daily Discovery untuk topik ini."
+      : "Belum ada riwayat tersimpan untuk topik ini. Klik “Simpan ke Daily Discovery” hari ini agar besok bisa terlihat keyword yang benar-benar baru.");
+  }
   for (const e of d.errors || []) notes.push("Gagal mengambil " + e.scope + ": " + e.error);
   $("notes").hidden = !notes.length;
   $("notelist").replaceChildren(...notes.map(n => el("li", { text: n })));
+  const sv = $("save");
+  sv.disabled = d.source === "mock" || !d.geo;
+  sv.title = d.source === "mock" ? "Data contoh tidak bisa disimpan"
+           : !d.geo ? "Pilih satu negara (bukan seluruh dunia) untuk menyimpan"
+           : "Simpan keyword yang tampil ke Daily Discovery dan pantau topik ini setiap hari";
   renderFilters(); renderList();
 }
 
@@ -246,6 +263,23 @@ async function research() {
   }
 }
 
+async function saveToDiscovery() {
+  const d = state.data; const rows = visibleRows(); if (!d || !rows.length) return;
+  const btn = $("save"); btn.disabled = true;
+  try {
+    const res = await fetch("/api/research/save", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: d.topic, geo: d.geo, category: d.category, source: d.source,
+        items: rows.map(r => ({ keyword: r.query, rising: r.rising_count > 0, breakout: r.breakout,
+                                score: r.max_value, label: r.breakout ? "Breakout" : (r.rising_count ? "+" + r.max_value + "%" : "") })) }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Gagal menyimpan (" + res.status + ")");
+    showMsg(body.saved + " keyword disimpan. Topik “" + body.topic + "” ikut dipantau di Daily Discovery.", "ok");
+  } catch (err) {
+    showMsg(err.message, "err");
+  } finally {
+    btn.disabled = d.source === "mock" || !d.geo;
+  }
+}
 function downloadCsv() {
   const d = state.data; if (!d) return;
   const head = ["Keyword", "Pola", "Turunan langsung", ...WIN.map(w => w[1]), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
@@ -266,6 +300,7 @@ async function copyAll() {
 
 $("form").addEventListener("submit", (e) => { e.preventDefault(); research(); });
 $("csv").addEventListener("click", downloadCsv);
+$("save").addEventListener("click", saveToDiscovery);
 $("copyall").addEventListener("click", copyAll);
 (async function init() {
   try {
@@ -275,9 +310,9 @@ $("copyall").addEventListener("click", copyAll);
   const u = new URLSearchParams(location.search);
   if (u.get("topic")) {
     $("topic").value = u.get("topic");
-    if (u.get("geo") !== null) $("geo").value = u.get("geo");
-    if (u.get("cat")) $("cat").value = u.get("cat");
-    if (u.get("expand")) $("expand").value = u.get("expand");
+    // Isi hanya bila nilainya ada di menu; selain itu tetap pakai nilai bawaan.
+    const pick = (id, v) => { if (v !== null && [...$(id).options].some(o => o.value === v)) $(id).value = v; };
+    pick("geo", u.get("geo")); pick("cat", u.get("cat")); pick("expand", u.get("expand"));
     if (u.get("demo")) $("demo").checked = true;
     research();
   }

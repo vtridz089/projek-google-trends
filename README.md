@@ -26,6 +26,11 @@ Satu riset = 4 permintaan (satu per rentang waktu) + sampai 5 permintaan turunan
 - Urutan: Breakout dulu, lalu paling banyak rentang yang naik, lalu kenaikan terbesar. Yang hanya populer ditaruh paling akhir dan disembunyikan secara bawaan.
 - Turunan tingkat dua diambil dari keyword naik teratas (7 hari). Rentang atau turunan yang gagal dicatat di halaman tanpa menggagalkan seluruh riset.
 
+- **Simpan ke Daily Discovery**: tombol di hasil riset menyimpan keyword yang tampil dan otomatis memasukkan topiknya ke Watchlist
+  (hanya untuk satu negara, dan tidak untuk data contoh).
+- **Belum pernah tersimpan**: setelah ada riwayat Daily Discovery untuk topik itu, keyword yang belum pernah tersimpan di hari-hari
+  sebelumnya diberi tanda dan bisa disaring. Pada hari pertama belum ada pembanding, jadi tanda ini tidak ditampilkan.
+
 Instagram dan TikTok **belum** termasuk: keduanya tidak punya sumber resmi gratis untuk keyword yang sedang naik.
 
 ### Cara kerja "booming"
