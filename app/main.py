@@ -48,6 +48,13 @@ async def lifespan(_: FastAPI):
             log.info("Riwayat dimuat dari %s: %d baris (%d dilewati)", csv_path, imported, skipped)
         except Exception:  # CSV rusak tidak boleh mencegah aplikasi menyala
             log.exception("Gagal memuat %s", csv_path)
+    try:
+        loaded = db.discovery_import_csv(os.environ.get("TRENDWATCH_WATCHLIST_CSV", "data/watchlist.csv"),
+                                         os.environ.get("TRENDWATCH_DISCOVERY_CSV", "data/discovery.csv"))
+        if loaded["watchlist"] or loaded["discovery"]:
+            log.info("Discovery dimuat dari CSV: %s", loaded)
+    except Exception:  # CSV rusak tidak boleh mencegah aplikasi menyala
+        log.exception("Gagal memuat CSV discovery")
     yield
 
 

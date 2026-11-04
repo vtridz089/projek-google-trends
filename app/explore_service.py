@@ -317,7 +317,8 @@ def merge_research(topic: str, per_window: dict[str, list[dict]]) -> list[dict]:
 
 
 def run_research(topic, geo: str = "ID", category=0, *, expand: int = 3, demo: bool = False,
-                 refresh: bool = False, provider=None, now: float | None = None) -> dict:
+                 refresh: bool = False, provider=None, now: float | None = None,
+                 windows: int | None = None) -> dict:
     """Riset satu topik: 4 rentang waktu + turunan tingkat dua untuk keyword teratas.
 
     Tiap rentang memakai cache Booming, jadi mengulang riset yang sama tidak menembak sumber lagi.
@@ -325,6 +326,7 @@ def run_research(topic, geo: str = "ID", category=0, *, expand: int = 3, demo: b
     bila semua rentang gagal, error pertama dilempar.
     """
     expand = max(0, min(int(expand), RESEARCH_MAX_EXPAND))
+    used = RESEARCH_WINDOWS[:max(1, min(int(windows), len(RESEARCH_WINDOWS)))] if windows else RESEARCH_WINDOWS
     per_window: dict[str, list[dict]] = {}
     errors: list[dict] = []
     first_error: ExploreError | None = None
@@ -335,7 +337,7 @@ def run_research(topic, geo: str = "ID", category=0, *, expand: int = 3, demo: b
         params = normalize_booming(query, geo, category, time_range, "", limit)
         return run_booming(params, demo=demo, refresh=refresh, provider=provider, now=now)
 
-    for window, label in RESEARCH_WINDOWS:
+    for window, label in used:
         try:
             res = one(window, topic, RESEARCH_PER_WINDOW)
         except ExploreError as exc:
@@ -361,7 +363,7 @@ def run_research(topic, geo: str = "ID", category=0, *, expand: int = 3, demo: b
         r["children"] = [{"query": c["query"], "label": c["label"], "breakout": c["breakout"]}
                          for c in res["items"] if c["kind"] == "naik"][:CHILD_LIMIT]
     return {
-        **meta, "windows": [{"value": v, "name": n, "ok": v in per_window} for v, n in RESEARCH_WINDOWS],
+        **meta, "windows": [{"value": v, "name": n, "ok": v in per_window} for v, n in used],
         "items": rows, "rising_total": sum(1 for r in rows if r["rising_count"] > 0),
         "errors": errors, "notes": notes, "expanded": len(expandable),
     }

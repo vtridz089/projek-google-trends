@@ -11,7 +11,7 @@ permissions:
   contents: write           # agar job boleh men-commit CSV hasilnya
 
 concurrency:
-  group: collect
+  group: repo-data
   cancel-in-progress: false
 
 jobs:

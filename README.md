@@ -98,6 +98,34 @@ python -m app.cli import --csv data/snapshots.csv
 python -m app.cli export --csv data/snapshots.csv
 ```
 
+## Pantau topik setiap hari (Watchlist otomatis)
+
+`.github/workflows/discover.yml` berjalan setiap hari pukul 08.00 WIB: meriset semua topik aktif di `data/watchlist.csv`
+(sama dengan halaman Riset topik), lalu menyimpan keyword yang naik ke `data/discovery.csv`, lengkap dengan skor peluang.
+Riwayat inilah yang membuat penanda **belum pernah tersimpan** dan **tersimpan N hari** bermakna.
+
+**Menambah topik tanpa terminal**: tab **Actions → Pantau topik Watchlist harian → Run workflow**, isi kolom *topik*
+(mis. `BUMN`). Topik langsung tersimpan dan ikut dipantau setiap hari. Bisa juga dari terminal:
+
+```bash
+python -m app.cli discover --add "BUMN"        # tambah topik lalu riset sekarang
+python -m app.cli discover --windows 2         # hanya 24 jam + 7 hari (hemat kuota)
+python -m app.cli discover --demo --add BUMN   # uji coba dengan data contoh, tidak menyimpan apa pun
+python -m app.cli export-discovery             # tulis Watchlist dan hasil dari database lokal ke CSV
+```
+
+Aturan kegagalan: **semua topik gagal = job merah** (Anda mendapat notifikasi); **sebagian gagal = job hijau dengan peringatan
+kuning**, karena Google sering menolak sebagian permintaan. Bila sumber gagal dan hanya ada cache lama, data lama **tidak** disimpan
+sebagai data hari ini.
+
+Catatan penting:
+- Google sering menolak IP server (HTTP 429), termasuk runner GitHub. Untuk keandalan, isi secret **`SERPAPI_KEY`**
+  (Settings → Secrets and variables → Actions). SerpApi gratis ±250 pencarian/bulan dan satu topik memakai 4 pencarian per hari,
+  jadi dengan rentang 4 hanya muat ±2 topik; turunkan `rentang` ke 1 atau 2 bila topiknya lebih banyak.
+- Dashboard memuat dua CSV ini saat menyala. Yang sudah ada di database lokal **tidak ditimpa**, dan topik yang Anda hapus di
+  dashboard bisa muncul lagi dari CSV bila tidak dihapus juga di CSV. Edit Watchlist lokal baru terlihat oleh Actions setelah
+  `python -m app.cli export-discovery` lalu commit dan push.
+
 ## Tes
 
 ```bash
@@ -124,6 +152,9 @@ memakai format yang sama hari ini. Cara memastikannya: jalankan tanpa data conto
 | `TRENDWATCH_GEO` | `ID` | Negara bawaan |
 | `TRENDWATCH_DB` | `trendwatch.db` | Lokasi file database SQLite |
 | `TRENDWATCH_CSV` | `data/snapshots.csv` | CSV riwayat tren harian yang dimuat saat start |
+| `TRENDWATCH_WATCHLIST_CSV` | `data/watchlist.csv` | CSV topik Watchlist |
+| `TRENDWATCH_DISCOVERY_CSV` | `data/discovery.csv` | CSV hasil Daily Discovery |
+| `TRENDWATCH_DISCOVER_WINDOWS` | `4` | Jumlah rentang waktu per topik untuk `discover` |
 | `TRENDWATCH_TZ` | `Asia/Jakarta` | Zona waktu untuk menentukan "hari ini" |
 | `TRENDWATCH_PASSWORD` | (kosong) | Jika diisi, seluruh dashboard dan API meminta login (HTTP Basic) |
 | `TRENDWATCH_USER` | `admin` | Nama pengguna untuk login di atas |

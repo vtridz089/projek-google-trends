@@ -3,6 +3,8 @@
     python -m app.cli collect --geo ID          # ambil tren hari ini, perbarui CSV
     python -m app.cli import --csv data/snapshots.csv
     python -m app.cli export --csv data/snapshots.csv
+    python -m app.cli discover [--add TOPIK] [--windows 4]   # pantau Watchlist, simpan ke CSV
+    python -m app.cli export-discovery                       # tulis Watchlist + hasil ke CSV
 
 Hanya memakai pustaka standar, jadi tidak perlu `pip install` di runner.
 Kode keluar 0 = sukses, 1 = ada negara yang gagal diambil (sehingga job
@@ -68,6 +70,104 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def _watch_csv() -> str:
+    return os.environ.get("TRENDWATCH_WATCHLIST_CSV", "data/watchlist.csv")
+
+
+def _disc_csv() -> str:
+    return os.environ.get("TRENDWATCH_DISCOVERY_CSV", "data/discovery.csv")
+
+
+def cmd_discover(args: argparse.Namespace) -> int:
+    """Riset setiap topik aktif di Watchlist dan simpan keyword yang naik ke Daily Discovery.
+
+    Kegagalan satu topik tidak menghentikan yang lain. Kode keluar 1 hanya bila SEMUA topik gagal
+    (job Actions merah); kegagalan sebagian diberi anotasi peringatan tetapi job tetap hijau,
+    karena Google sering menolak sebagian permintaan dari server."""
+    from . import explore_service
+    from .explore import ExploreError
+
+    db.init_db()
+    db.discovery_init()
+    csv_on = not (args.no_csv or args.demo)
+    if csv_on:
+        loaded = db.discovery_import_csv(_watch_csv(), _disc_csv())
+        log.info("Riwayat discovery dimuat: %s", loaded)
+
+    for topic in args.add or []:
+        topic = topic.strip()
+        if not topic or len(topic) > 100 or "," in topic or "\n" in topic:
+            print(f"[GAGAL] Topik tidak valid (satu topik, maks 100 karakter): {topic!r}", file=sys.stderr)
+            return 2
+        if args.demo:  # uji coba: jangan menyentuh database
+            continue
+        w = db.watchlist_add(topic, args.watch_geo.upper(), 0)
+        print(f"[OK] Watchlist: {w['topic']} ({w['geo']})")
+
+    if args.demo and args.add:
+        topics = [{"id": 0, "topic": t.strip(), "geo": args.watch_geo.upper(), "category": 0, "is_active": 1}
+                  for t in args.add]
+    else:
+        topics = [w for w in db.watchlist_list() if w["is_active"]]
+    if not topics:
+        print("Watchlist kosong atau semua nonaktif. Tambahkan topik dengan --add atau lewat halaman Daily Discovery.")
+        if csv_on and args.add is not None:
+            db.discovery_dump_csv(_watch_csv(), _disc_csv())
+        return 0
+
+    day = today_local().isoformat()
+    ok = failed = saved_total = 0
+    for w in topics:
+        label = f"{w['topic']} ({w['geo']})"
+        try:
+            res = explore_service.run_research(w["topic"], w["geo"], w["category"], expand=0, demo=args.demo,
+                                               refresh=args.refresh, windows=args.windows)
+        except ExploreError as exc:
+            print(f"[GAGAL] {label}: {exc}" + (f" Saran: {exc.hint}" if exc.hint else ""), file=sys.stderr)
+            failed += 1
+            continue
+        except Exception as exc:  # kesalahan tak terduga pada satu topik tidak boleh menghentikan yang lain
+            print(f"[GAGAL] {label}: kesalahan tak terduga: {exc!r}", file=sys.stderr)
+            failed += 1
+            continue
+        if res.get("stale") and not args.demo:
+            # Sumber gagal dan yang tersedia hanya cache lama: jangan simpan data kemarin sebagai data hari ini.
+            print(f"[GAGAL] {label}: sumber data gagal dan hanya ada cache lama; tidak disimpan.", file=sys.stderr)
+            failed += 1
+            continue
+        counts, days = db.discovery_history_counts(res["topic"], res["geo"], res["category"], day)
+        res = explore_service.finalize_research(res, counts, days)
+        rows = [{"keyword": r["query"], "source": "research",
+                 "trend_category": "trending" if r["breakout"] else "emerging",
+                 "interest_score": r["max_value"], "opportunity_score": r["peluang"]["skor"],
+                 "trend_change": "Breakout" if r["breakout"] else f"+{r['max_value']}%"}
+                for r in res["items"] if r["rising_count"] > 0]
+        saved = db.discovery_save(w["id"], day, rows) if not args.demo else 0
+        saved_total += saved
+        baru = sum(1 for r in res["items"] if r["rising_count"] > 0 and r.get("belum_pernah"))
+        print(f"[OK] {label}: {len(rows)} keyword naik, {saved} tersimpan"
+              + (f", {baru} belum pernah tersimpan" if days else " (belum ada riwayat pembanding)"))
+        for e in res.get("errors", []):
+            print(f"::warning::{label}: gagal mengambil {e['scope']}: {e['error']}")
+        ok += 1
+
+    if csv_on and (ok or args.add or os.path.exists(_disc_csv())):  # topik yang baru ditambahkan jangan hilang walau Google menolak
+        w_rows, d_rows = db.discovery_dump_csv(_watch_csv(), _disc_csv())
+        print(f"CSV diperbarui: {_watch_csv()} ({w_rows} topik), {_disc_csv()} ({d_rows} baris)")
+    if failed:
+        print(f"::warning::{failed} dari {len(topics)} topik gagal diambil hari ini.")
+    print(f"Selesai: {ok} topik berhasil, {failed} gagal, {saved_total} keyword tersimpan untuk {day}.")
+    return 1 if ok == 0 else 0
+
+
+def cmd_export_discovery(args: argparse.Namespace) -> int:
+    db.init_db()
+    db.discovery_init()
+    w_rows, d_rows = db.discovery_dump_csv(args.watchlist_csv, args.discovery_csv)
+    print(f"Diekspor {w_rows} topik ke {args.watchlist_csv} dan {d_rows} baris ke {args.discovery_csv}")
+    return 0
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     if not os.path.exists(args.csv):
         print(f"[GAGAL] Berkas tidak ditemukan: {args.csv}", file=sys.stderr)
@@ -101,6 +201,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("import", help="muat CSV ke database")
     p.add_argument("--csv", default=_default_csv())
     p.set_defaults(func=cmd_import)
+
+    p = sub.add_parser("discover", help="pantau topik Watchlist dan simpan keyword yang naik")
+    p.add_argument("--add", action="append", help="tambahkan topik ke Watchlist dulu (boleh diulang)")
+    p.add_argument("--watch-geo", default=os.environ.get("TRENDWATCH_GEO", "ID"),
+                   help="negara untuk topik yang ditambahkan lewat --add (default: ID)")
+    p.add_argument("--windows", type=int, default=int(os.environ.get("TRENDWATCH_DISCOVER_WINDOWS", "4")),
+                   choices=[1, 2, 3, 4], help="jumlah rentang waktu per topik (24 jam, 7, 30, 90 hari; default 4)")
+    p.add_argument("--refresh", action="store_true", help="abaikan cache")
+    p.add_argument("--demo", action="store_true", help="coba alur dengan data contoh; tidak menyimpan apa pun")
+    p.add_argument("--no-csv", action="store_true", help="jangan baca/tulis CSV")
+    p.set_defaults(func=cmd_discover)
+
+    p = sub.add_parser("export-discovery", help="tulis Watchlist dan hasil discovery ke CSV")
+    p.add_argument("--watchlist-csv", default=_watch_csv())
+    p.add_argument("--discovery-csv", default=_disc_csv())
+    p.set_defaults(func=cmd_export_discovery)
 
     p = sub.add_parser("export", help="tulis database ke CSV")
     p.add_argument("--csv", default=_default_csv())

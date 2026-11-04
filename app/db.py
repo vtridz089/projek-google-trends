@@ -508,3 +508,108 @@ def discovery_history(topic: str, geo: str, category: int, before_day: str) -> t
             WHERE w.topic = ? AND w.geo = ? AND w.category = ? AND c.discovery_date < ?
         """, (topic, geo, int(category), before_day)).fetchall()
     return {r["k"] for r in rows}, len({r["d"] for r in rows})
+
+
+# ------------------------------------------------------------------
+# Watchlist & Discovery <-> CSV (agar riwayat bertahan di repo, seperti snapshots.csv)
+# ------------------------------------------------------------------
+WATCHLIST_FIELDS = ["topic", "geo", "category", "is_active"]
+DISCOVERY_FIELDS = ["day", "topic", "geo", "category", "keyword", "source", "trend_category",
+                    "interest_score", "opportunity_score", "trend_change", "status"]
+_STATUSES = {"New", "Saved", "Writing", "Published", "Rejected"}
+
+
+def _write_csv_atomic(path: str, fields: list[str], rows: list[dict]) -> None:
+    import os
+    import tempfile
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            w.writeheader()
+            w.writerows(rows)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def discovery_dump_csv(watchlist_path: str, discovery_path: str) -> tuple[int, int]:
+    """Tulis Watchlist dan hasil discovery ke CSV (urutan tetap supaya diff di Git bersih)."""
+    with closing(connect()) as conn:
+        watch = conn.execute(
+            "SELECT topic, geo, category, is_active FROM topic_watchlist ORDER BY topic COLLATE NOCASE, geo, category"
+        ).fetchall()
+        cands = conn.execute("""
+            SELECT c.discovery_date AS day, w.topic, w.geo, w.category, c.keyword, c.source, c.trend_category,
+                   c.interest_score, c.opportunity_score, c.status,
+                   (SELECT s.trend_change FROM keyword_snapshots s WHERE s.candidate_id = c.id
+                    ORDER BY s.id DESC LIMIT 1) AS trend_change
+            FROM keyword_candidates c JOIN topic_watchlist w ON w.id = c.topic_id
+            ORDER BY c.discovery_date, w.topic COLLATE NOCASE, c.keyword COLLATE NOCASE, c.source
+        """).fetchall()
+    _write_csv_atomic(watchlist_path, WATCHLIST_FIELDS, [dict(r) for r in watch])
+    _write_csv_atomic(discovery_path, DISCOVERY_FIELDS, [
+        {k: ("" if r[k] is None else r[k]) for k in DISCOVERY_FIELDS} for r in cands])
+    return len(watch), len(cands)
+
+
+def discovery_import_csv(watchlist_path: str | None, discovery_path: str | None) -> dict:
+    """Muat CSV Watchlist/discovery. Aman diulang: yang sudah ada TIDAK ditimpa (perubahan lokal aman).
+    Mengembalikan jumlah baru dan baris yang dilewati."""
+    out = {"watchlist": 0, "discovery": 0, "dilewati": 0}
+    import os
+    if watchlist_path and os.path.exists(watchlist_path):
+        with open(watchlist_path, newline="", encoding="utf-8-sig") as f, closing(connect()) as conn, conn:
+            for row in csv.DictReader(f):
+                try:
+                    topic = (row["topic"] or "").strip()
+                    geo = (row["geo"] or "").strip().upper()
+                    if not topic or len(topic) > 100 or len(geo) != 2 or not geo.isalpha():
+                        raise ValueError
+                    cur = conn.execute(
+                        "INSERT INTO topic_watchlist(topic, geo, category, is_active) VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(topic, geo, category) DO NOTHING",
+                        (topic, geo, int(row.get("category") or 0), 0 if str(row.get("is_active", "1")) == "0" else 1))
+                    out["watchlist"] += cur.rowcount
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    out["dilewati"] += 1
+    if discovery_path and os.path.exists(discovery_path):
+        with open(discovery_path, newline="", encoding="utf-8-sig") as f, closing(connect()) as conn, conn:
+            for row in csv.DictReader(f):
+                try:
+                    topic = (row["topic"] or "").strip()
+                    geo = (row["geo"] or "").strip().upper()
+                    keyword = (row["keyword"] or "").strip()
+                    day = date.fromisoformat((row["day"] or "").strip()).isoformat()
+                    if not topic or not keyword or len(geo) != 2:
+                        raise ValueError
+                    w = conn.execute("SELECT id FROM topic_watchlist WHERE topic=? AND geo=? AND category=?",
+                                     (topic, geo, int(row.get("category") or 0))).fetchone()
+                    if w is None:  # topiknya tidak ada di watchlist.csv: dibuat nonaktif agar riwayat tidak hilang
+                        conn.execute("INSERT INTO topic_watchlist(topic, geo, category, is_active) VALUES (?,?,?,0)",
+                                     (topic, geo, int(row.get("category") or 0)))
+                        w = conn.execute("SELECT id FROM topic_watchlist WHERE topic=? AND geo=? AND category=?",
+                                         (topic, geo, int(row.get("category") or 0))).fetchone()
+                    def num(v, cast):
+                        return None if v in (None, "") else cast(v)
+                    status = row.get("status") if row.get("status") in _STATUSES else "New"
+                    cur = conn.execute("""
+                        INSERT INTO keyword_candidates
+                            (keyword, topic_id, discovery_date, source, trend_category, interest_score,
+                             opportunity_score, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(keyword, topic_id, discovery_date, source) DO NOTHING
+                    """, (keyword, w["id"], day, row.get("source") or "research",
+                          row.get("trend_category") or "new_candidate", num(row.get("interest_score"), int),
+                          num(row.get("opportunity_score"), float), status))
+                    if cur.rowcount and row.get("trend_change"):
+                        conn.execute("INSERT INTO keyword_snapshots(candidate_id, interest_score, trend_change, source) "
+                                     "VALUES (?, ?, ?, ?)", (cur.lastrowid, num(row.get("interest_score"), int),
+                                                              row["trend_change"], row.get("source") or "research"))
+                    out["discovery"] += cur.rowcount
+                except (KeyError, ValueError, TypeError, AttributeError):
+                    out["dilewati"] += 1
+    return out

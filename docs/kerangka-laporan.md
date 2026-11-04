@@ -31,6 +31,7 @@ kampus/sekolah dan instansi Anda. Bagian bertanda **[ISI]** adalah hal yang hany
 ## Bab IV. Implementasi dan Pengujian
 - Struktur proyek dan penjelasan tiap modul (`collector`, `explore`, `explore_service`, `db`, `main`, `cli`, halaman di `static/`).
 - Analisis tambahan (`insight.py`): skor peluang, maksud pencarian, pengelompokan, dan riwayat; jelaskan sebagai aturan heuristik, bukan data Google, beserta rumus dan batasannya.
+- Pemantauan harian (`discover.yml`, `cmd_discover`): penyimpanan riwayat sebagai CSV di Git, aturan kegagalan (semua gagal = merah, sebagian = peringatan), dan penolakan cache lama.
 - Cara kerja "Riset topik" (`merge_research`, `run_research`): penggabungan 4 rentang waktu, pola baru/konsisten, dan turunan tingkat dua.
 - Cara kerja peringkat "booming" (`rank_booming`): Breakout, persentase kenaikan, dan pengisian dengan pencarian populer.
 - Implementasi penanganan kegagalan (percobaan ulang, pesan error, job Actions merah).

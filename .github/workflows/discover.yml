@@ -1,0 +1,69 @@
+name: Pantau topik Watchlist harian
+
+# Setiap pagi meriset semua topik aktif di data/watchlist.csv (24 jam sampai 90 hari), lalu menyimpan
+# keyword yang sedang naik ke data/discovery.csv. Riwayat inilah yang membuat penanda "belum pernah
+# tersimpan" di halaman Riset topik bermakna.
+#
+# Cara menambah topik tanpa terminal: tab Actions > "Pantau topik Watchlist harian" > Run workflow,
+# isi kolom "topik". Topik itu tersimpan di data/watchlist.csv dan ikut dipantau setiap hari.
+#
+# Sumber data: Google langsung (gratis, tetapi Google sering menolak IP server dengan HTTP 429).
+# Bila ada secret SERPAPI_KEY, otomatis dipakai sebagai cadangan. SerpApi gratis +-250 pencarian/bulan
+# dan satu topik memakai 4 pencarian per hari (rentang 4), jadi atur "rentang" ke 1 atau 2 bila topiknya banyak.
+on:
+  schedule:
+    - cron: "0 1 * * *"     # 01:00 UTC = 08:00 WIB (setelah pengambilan tren harian 07.30 WIB)
+  workflow_dispatch:
+    inputs:
+      topik:
+        description: "Tambahkan satu topik ke Watchlist (opsional), mis. BUMN"
+        required: false
+        default: ""
+      negara:
+        description: "Kode negara untuk topik yang ditambahkan"
+        required: false
+        default: "ID"
+      rentang:
+        description: "Jumlah rentang waktu per topik: 1 (24 jam) sampai 4 (24 jam, 7, 30, 90 hari)"
+        required: false
+        default: "4"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-data           # sama dengan collect.yml agar dua job tidak saling menimpa saat push
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pantau topik (semua gagal = job merah; sebagian gagal = peringatan kuning)
+        env:
+          # Masukan dari pengguna lewat env, bukan disisipkan ke skrip, agar aman dari injeksi perintah.
+          TOPIK: ${{ inputs.topik }}
+          NEGARA: ${{ inputs.negara }}
+          RENTANG: ${{ inputs.rentang }}
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+        run: |
+          args=()
+          if [ -n "$TOPIK" ]; then args+=(--add "$TOPIK"); fi
+          python -m app.cli discover "${args[@]}" --watch-geo "${NEGARA:-ID}" --windows "${RENTANG:-4}"
+      - name: Simpan CSV ke repo
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain data/watchlist.csv data/discovery.csv)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/watchlist.csv data/discovery.csv
+            git commit -m "Pantau Watchlist $(date -u +%F)"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push
+          else
+            echo "Tidak ada perubahan data."
+          fi
