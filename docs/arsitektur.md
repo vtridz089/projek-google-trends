@@ -105,9 +105,10 @@ flowchart LR
     S --> R
 ```
 
-- **Booming**: satu topik → `related queries` Google. Yang *naik* (rising) diurutkan Breakout lebih dulu,
-  lalu menurut persentase kenaikan; bila kurang dari 10, sisanya diisi yang *populer* (top) dan diberi label
-  berbeda agar tidak disangka ikut naik. Ditambah tren harian (RSS) yang memuat topik tersebut.
+- **Booming**: satu topik → `related queries` Google. Hanya yang *naik* (rising) yang ditampilkan, diurutkan Breakout
+  lebih dulu, lalu menurut persentase kenaikan; jumlahnya bisa kurang dari 10 atau nol (yang sekadar *populer* tidak
+  diisikan). Tiap keyword diberi skor peluang dari 1 periode, dan klik keyword mencari turunannya dengan alur yang sama
+  (`sub=true`, tidak masuk "Pencarian terakhir"). Ditambah tren harian (RSS) yang memuat topik tersebut.
 - **Jelajah**: hingga 5 keyword → grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah.
 - Tabel tambahan: `explore_cache(cache_key, params, payload, fetched_at)`; masa berlaku Booming 1 jam,
   Jelajah 6 jam (dapat diatur lewat variabel lingkungan).

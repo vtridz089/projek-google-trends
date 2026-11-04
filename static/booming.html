@@ -18,7 +18,7 @@
   <header>
     <div>
       <h1>Lagi booming apa?</h1>
-      <div class="sub">Ketik sebuah topik, lihat 10 pencarian yang sedang naik paling tajam di Google</div>
+      <div class="sub">Ketik sebuah topik, lihat pencarian yang benar-benar sedang naik di Google, lengkap dengan persen kenaikan dan skor peluangnya</div>
     </div>
   </header>
 
@@ -52,7 +52,7 @@
       <label class="field"><span>Kategori (opsional)</span><select id="cat"><option value="0">Semua kategori</option></select></label>
     </div>
     <div class="actions">
-      <button class="primary" id="go" type="submit">Tampilkan top 10</button>
+      <button class="primary" id="go" type="submit">Cari yang sedang naik</button>
       <label class="check"><input type="checkbox" id="demo"> Pakai data contoh (tanpa Google)</label>
       <label class="check"><input type="checkbox" id="refresh"> Abaikan cache</label>
       <span class="status" id="status" role="status" aria-live="polite"></span>
@@ -66,7 +66,8 @@
 
   <section class="card intro" id="intro">
     <p><b>Mulai dengan mengetik topik di atas, misalnya "BUMN".</b></p>
-    <p>Daftar diambil dari <i>pencarian terkait yang sedang naik</i> di Google Trends: pencarian yang pertumbuhannya paling tajam dibanding periode sebelumnya, bukan sekadar yang paling sering dicari.</p>
+    <p>Yang ditampilkan hanya <i>pencarian terkait yang benar-benar sedang naik</i> di Google Trends, lengkap dengan persen kenaikannya. Pencarian yang sekadar sering dicari tidak ikut. Jumlahnya bisa kurang dari 10, atau kosong bila memang tidak ada yang naik.</p>
+    <p><b>Klik sebuah keyword</b> untuk melihat turunannya: pencarian lebih lanjut dari keyword itu yang juga sedang naik.</p>
     <p>Persempit dengan <b>kategori</b> bila topiknya ambigu, atau ganti <b>periode</b> untuk melihat yang baru naik hari ini atau yang bertahan sebulan.</p>
   </section>
 
@@ -82,10 +83,13 @@
         </div>
         <div class="actions"><button type="button" id="copyall" title="Salin semua pencarian, satu per baris">Salin semua</button><button type="button" id="csv">Unduh CSV</button></div>
       </div>
+      <div class="empty" id="emptybox" hidden></div>
       <ol class="ranklist" id="list"></ol>
       <div class="explain">
         <b>Breakout</b> = naik lebih dari 5.000%. <b>+N%</b> = pertumbuhan pencarian dibanding periode sebelumnya.
-        <b>Populer</b> = sering dicari, tetapi tidak tercatat naik. Angka adalah perbandingan relatif, bukan jumlah pencarian.
+        <b>Peluang</b> = skor 0–100 dari kenaikan, waktu naiknya, dan kedekatannya dengan topik. Ini aturan sederhana buatan kami, bukan data Google,
+        dan hanya memeriksa satu periode; untuk skor dari 4 periode sekaligus pakai <a href="/riset">Riset topik</a>.
+        Angka adalah perbandingan relatif, bukan jumlah pencarian.
       </div>
     </section>
 
@@ -154,7 +158,7 @@ function applyParams(p) {
 async function search() {
   const topic = $("topic").value.trim();
   if (!topic) { showMsg("Masukkan sebuah topik.", "err"); return; }
-  const p = new URLSearchParams({ topic, geo: $("geo").value, cat: $("cat").value, time: $("time").value, limit: "10" });
+  const p = new URLSearchParams({ topic, geo: $("geo").value, cat: $("cat").value, time: $("time").value, limit: "10", rising_only: "true" });
   if ($("demo").checked) p.set("demo", "true");
   if ($("refresh").checked) p.set("refresh", "true");
   setLoading(true); showMsg("");
@@ -205,11 +209,13 @@ function render() {
   $("notes").hidden = notes.length === 0;
   $("notelist").replaceChildren(...notes.map(n => el("li", { text: n })));
 
-  $("title").textContent = "Top " + d.items.length + " yang sedang booming: “" + d.topic + "”";
-  $("subtitle").textContent = d.rising_count + " naik · " + (d.items.length - d.rising_count) + " populer";
+  $("title").textContent = d.items.length ? "Sedang naik: “" + d.topic + "”" : "Tidak ada yang naik: “" + d.topic + "”";
+  $("subtitle").textContent = d.items.length + " pencarian naik · " + optionText("time", d.time);
+  $("copyall").disabled = $("csv").disabled = !d.items.length;
 
   const list = $("list"); list.replaceChildren();
   for (const it of d.items) list.append(row(it, d));
+  renderEmpty(d);
 
   const t = d.today || { items: [] };
   $("todaybox").hidden = !t.items.length;
@@ -231,50 +237,71 @@ function render() {
 function why(it) {
   if (it.kind === "populer") return "Sering dicari (skor " + it.value + " dari 100), tetapi tidak tercatat naik.";
   if (it.breakout) return "Naik lebih dari 5.000% dibanding periode sebelumnya.";
-  return "Pencarian naik " + it.label.replace(/^\+/, "+") + " dibanding periode sebelumnya.";
+  return "Naik " + it.label + " dibanding periode sebelumnya.";
+}
+function pct(it) { return it.breakout ? "Breakout (>5.000%)" : it.label; }
+function peluangPill(it) {
+  if (!it.peluang) return document.createTextNode("");
+  const b = it.peluang.bagian;
+  return el("span", { class: "pill lv-" + it.peluang.level, text: "Peluang " + it.peluang.skor + "/100",
+    title: "Dari 1 periode. Pertumbuhan " + b.pertumbuhan + "/40 · Konsistensi " + b.konsistensi + "/25 · Sinyal dini " +
+           b.dini + "/15 · Belum pernah tersimpan " + b.baru + "/10 · Relevan dengan topik " + b.relevan + "/10" });
+}
+function renderEmpty(d) {
+  const box = $("emptybox");
+  box.hidden = d.items.length > 0;
+  if (d.items.length) return;
+  const more = [...$("time").options].filter((o, i) => i > $("time").selectedIndex);
+  const kids = [
+    el("p", { text: "Google tidak mencatat satu pun pencarian yang naik untuk “" + d.topic + "” pada periode " + optionText("time", d.time).toLowerCase() + "." }),
+    el("p", { class: "sub", text: d.popular_count
+      ? d.popular_count + " pencarian terkait memang sering dicari, tetapi tidak naik, jadi tidak ditampilkan di sini."
+      : "Topik dengan volume kecil sering belum punya data kenaikan." }),
+  ];
+  const acts = el("div", { class: "chips", style: "justify-content:center" });
+  for (const o of more) {
+    const b = el("button", { type: "button", class: "chip", text: "Coba " + o.textContent.trim().toLowerCase() });
+    b.addEventListener("click", () => { $("time").value = o.value; search(); });
+    acts.append(b);
+  }
+  acts.append(el("a", { class: "chip", href: "/riset?topic=" + encodeURIComponent(d.topic) + "&geo=" + encodeURIComponent(d.geo),
+                        text: "Riset topik (4 periode sekaligus)" }));
+  box.replaceChildren(...kids, acts);
 }
 
-async function loadKeywordRelated(query, d, panel, button) {
+async function loadKeywordRelated(it, d, panel, button) {
   panel.hidden = false;
-  panel.replaceChildren(el("div", { class: "sub", text: "Mengambil query terkait untuk “" + query + "”…" }));
+  panel.replaceChildren(el("div", { class: "sub", text: "Mencari turunan dari “" + it.query + "”…" }));
   button.setAttribute("aria-expanded", "true");
-  const p = new URLSearchParams({ q: query, geo: d.geo, cat: String(d.category || 0),
-                                  time: d.time, parts: "related" });
+  const p = new URLSearchParams({ topic: it.query, geo: d.geo, cat: String(d.category || 0), time: d.time,
+                                  limit: "10", rising_only: "true", sub: "true" });
   if ($("demo").checked) p.set("demo", "true");
   try {
-    const result = await api("/api/explore?" + p.toString());
-    const rel = (result.related || {})[query] || Object.values(result.related || {})[0];
-    panel.replaceChildren(el("h3", { text: "Query terkait: " + query }));
-    if (!rel) {
-      panel.append(el("div", { class: "empty", text: "Query terkait tidak tersedia untuk keyword ini." }));
+    const r = await api("/api/booming?" + p.toString());
+    panel.replaceChildren(
+      el("h3", { text: "Turunan dari “" + it.query + "” yang sedang naik" }),
+      el("div", { class: "selfline" }, [
+        "“" + it.query + "” sendiri: ", el("b", { text: pct(it) }), " dalam " + optionText("time", d.time).toLowerCase() + " · ", peluangPill(it)]));
+    if (!r.items.length) {
+      panel.append(el("div", { class: "sub", text: "Tidak ada turunan dari “" + it.query + "” yang tercatat naik pada periode ini. " +
+        "Coba periode yang lebih panjang, atau klik Telusuri untuk mencarinya sebagai topik sendiri." }));
       return;
     }
-    const makeList = (title, rows, valueOf) => {
-      const ul = el("ul");
-      for (const item of (rows || []).slice(0, 10)) {
-        ul.append(el("li", {}, [
-          el("span", { text: item.query }),
-          el("span", { class: "v", text: valueOf(item) })
-        ]));
-      }
-      return el("div", { class: "rel" }, [
-        el("h3", { text: title }),
-        rows && rows.length ? ul : el("div", { class: "sub", text: "Tidak ada data." })
-      ]);
-    };
-    panel.append(el("div", { class: "cols2" }, [
-      makeList("Teratas (0–100)", rel.top, item => String(item.value)),
-      makeList("Sedang naik", rel.rising, item => {
-        const label = String(item.label || "");
-        if (/breakout/i.test(label)) return "Breakout";
-        if (/%/.test(label)) return label.startsWith("+") ? label : "+" + label;
-        return "+" + item.value + "%";
-      })
-    ]));
-    panel.append(el("div", { class: "sub", style: "margin-top:8px",
-                             text: "Angka pada kolom Sedang naik menunjukkan persentase kenaikan pencarian dibanding periode sebelumnya." }));
+    const ul = el("ul", { class: "subs" });
+    for (const c of r.items) {
+      const copy = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin “" + c.query + "”" });
+      copy.addEventListener("click", async () => flash(copy, await copyText(c.query), "“" + c.query + "” disalin"));
+      const dig = el("button", { type: "button", text: "Telusuri" });
+      dig.addEventListener("click", () => { $("topic").value = c.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+      ul.append(el("li", {}, [
+        el("span", { class: "sq", text: c.query }),
+        el("span", { class: "badge " + (c.breakout ? "b-baru" : "b-naik"), text: "▲ " + (c.breakout ? "Breakout" : c.label) }),
+        peluangPill(c), copy, dig]));
+    }
+    panel.append(ul, el("div", { class: "sub", style: "margin-top:8px",
+      text: "Persen = kenaikan pencarian dibanding periode sebelumnya. Peluang dihitung dari periode ini saja." }));
   } catch (error) {
-    panel.replaceChildren(el("div", { class: "err", text: "Gagal mengambil query terkait: " + error.message }));
+    panel.replaceChildren(el("div", { class: "err", text: "Gagal mengambil turunan: " + error.message }));
   }
 }
 
@@ -293,7 +320,7 @@ function row(it, d) {
   dig.addEventListener("click", () => { $("topic").value = it.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
 
   const keywordButton = el("button", { type: "button", class: "q keyword-link",
-    text: it.query, title: "Klik untuk melihat query turunan", "aria-expanded": "false" });
+    text: it.query, title: "Klik untuk melihat turunan yang juga sedang naik", "aria-expanded": "false" });
   const panel = el("div", { class: "keyword-related", hidden: "hidden" });
   let loaded = false;
   keywordButton.addEventListener("click", () => {
@@ -308,17 +335,19 @@ function row(it, d) {
       return;
     }
     loaded = true;
-    loadKeywordRelated(it.query, d, panel, keywordButton);
+    loadKeywordRelated(it, d, panel, keywordButton);
   });
   const details = el("div", {}, [
     keywordButton,
     el("div", { class: "why", text: why(it) }),
-    panel
+    el("div", { class: "tags" }, [peluangPill(it)])
   ]);
+  // Panel turunan dibuat anak langsung baris agar selebar baris, bukan terjepit di kolom tengah.
   return el("li", { class: "rankrow" }, [
     el("span", { class: "no", text: String(it.rank) }),
     details,
     el("div", { class: "acts" }, [badge, copy, chart, dig, google]),
+    panel,
   ]);
 }
 
@@ -352,8 +381,8 @@ function csvCell(v) {
 }
 function downloadCsv() {
   const d = state.data; if (!d) return;
-  const rows = [["Peringkat", "Pencarian", "Jenis", "Pertumbuhan / skor", "Topik", "Wilayah", "Periode"]];
-  d.items.forEach(i => rows.push([i.rank, i.query, i.kind === "naik" ? "naik" : "populer", i.label, d.topic, optionText("geo", d.geo), optionText("time", d.time)]));
+  const rows = [["Peringkat", "Pencarian", "Kenaikan (%)", "Skor peluang (0-100)", "Topik", "Wilayah", "Periode"]];
+  d.items.forEach(i => rows.push([i.rank, i.query, i.breakout ? "Breakout (>5000)" : i.value, i.peluang ? i.peluang.skor : "", d.topic, optionText("geo", d.geo), optionText("time", d.time)]));
   const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
   const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })),
                       download: "booming-" + d.topic.replace(/[^\w-]+/g, "_").slice(0, 40) + ".csv" });

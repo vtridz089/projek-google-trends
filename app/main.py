@@ -214,15 +214,20 @@ def api_booming(
     period: str = Query("now 7-d", alias="time"),
     gprop: str = "",
     limit: int = explore_service.BOOMING_DEFAULT_LIMIT,
+    rising_only: bool = True,
+    sub: bool = False,
     demo: bool = False,
     refresh: bool = False,
 ):
-    """Top-N pencarian yang sedang booming untuk satu topik (mis. 'bumn').
+    """Pencarian yang sedang naik untuk satu topik (mis. 'bumn'), lengkap dengan persen kenaikan dan skor peluang.
 
-    Diambil dari 'pencarian terkait yang sedang naik' Google Trends. demo=true memakai
-    data contoh (bukan dari Google)."""
+    Diambil dari 'pencarian terkait yang sedang naik' Google Trends. Secara bawaan HANYA yang tercatat naik
+    (jumlahnya bisa kurang dari ``limit``, bahkan nol); rising_only=false mengisi sisanya dengan yang populer.
+    sub=true menandai pencarian turunan dari panel keyword (tidak masuk "Pencarian terakhir").
+    demo=true memakai data contoh (bukan dari Google)."""
     try:
-        params = explore_service.normalize_booming(topic, geo, cat, period, gprop, limit)
+        params = explore_service.normalize_booming(topic, geo, cat, period, gprop, limit,
+                                                   rising_only=rising_only, sub=sub)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     try:

@@ -323,10 +323,10 @@ async function saveToDiscovery() {
 }
 function downloadCsv() {
   const d = state.data; if (!d) return;
-  const head = ["Keyword", "Pola", "Skor peluang", "Maksud pencarian", "Kelompok", "Hari tersimpan", "Turunan langsung", ...WIN.map(w => w[1]), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
+  const head = ["Keyword", "Pola", "Skor peluang", "Maksud pencarian", "Kelompok", "Hari tersimpan", "Turunan langsung", ...WIN.map(w => w[1] + " (%)"), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
   const rows = [head];
   visibleRows().forEach(r => rows.push([r.query, PATTERN[r.pattern], r.peluang.skor, INTENT[r.maksud] || r.maksud, r.kelompok, r.hari_tersimpan ?? "", r.turunan ? "ya" : "tidak",
-    ...WIN.map(([w]) => { const c = r.windows[w]; return !c ? "" : c.kind === "populer" ? "populer" : c.label; }),
+    ...WIN.map(([w]) => { const c = r.windows[w]; return !c ? "" : c.kind === "populer" ? "populer" : c.breakout ? "Breakout (>5000)" : c.value; }),
     (r.children || []).map(c => c.query).join("; "), d.topic, optionText("geo", d.geo)]));
   const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
   const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })),

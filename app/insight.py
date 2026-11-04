@@ -68,6 +68,20 @@ def opportunity(row: dict) -> dict:
     return {"skor": total, "level": level, "bagian": parts}
 
 
+def opportunity_one_period(item: dict, topic: str, time_range: str) -> dict:
+    """Skor peluang bila hanya satu periode yang diperiksa (halaman Booming).
+
+    Memakai rumus yang sama dengan ``opportunity``; rentang lain dianggap belum terbukti naik, jadi skornya bisa
+    lebih rendah daripada skor di Riset topik (yang memeriksa 4 rentang). Periode "now ..." (jam/hari) dihitung
+    sebagai sinyal dini; periode bulan/tahun tidak."""
+    topic_words = set(_words(topic))
+    return opportunity({
+        "rising_count": 1, "max_value": int(item.get("value") or 0), "breakout": bool(item.get("breakout")),
+        "pattern": "baru" if str(time_range).startswith("now ") else "naik", "belum_pernah": None,
+        "turunan": bool(topic_words) and topic_words <= set(_words(item["query"])),
+    })
+
+
 # ----------------------------------------------------------------------------- kelompok keyword
 _STOP = {"yang", "di", "dan", "ke", "dari", "untuk", "dengan", "ini", "itu", "atau", "pada", "the", "of", "a"}
 

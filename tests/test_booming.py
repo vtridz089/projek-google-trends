@@ -5,7 +5,7 @@ from datetime import date
 
 import pytest
 
-from app import db, explore, explore_service
+from app import db, explore, explore_service, insight
 from app.collector import TrendItem
 from app.explore import ExploreError, GoogleDirectProvider, MockExploreProvider, SerpApiProvider
 from app.explore_service import normalize_booming, rank_booming, run_booming
@@ -317,8 +317,12 @@ def test_api_booming_demo(client):
     r = client.get("/api/booming", params={"topic": "BUMN", "demo": "true"})
     assert r.status_code == 200
     d = r.json()
-    assert d["topic"] == "BUMN" and len(d["items"]) == 10 and d["source"] == "mock"
+    # Bawaan API: hanya yang benar-benar naik (data contoh punya 6 yang naik), tanpa isian populer.
+    assert d["topic"] == "BUMN" and d["source"] == "mock" and len(d["items"]) == 6
+    assert all(i["kind"] == "naik" and 0 <= i["peluang"]["skor"] <= 100 for i in d["items"])
     assert d["items"][0]["rank"] == 1 and "today" in d
+    full = client.get("/api/booming", params={"topic": "BUMN", "demo": "true", "rising_only": "false"}).json()
+    assert len(full["items"]) == 10                 # mode lama tetap tersedia: diisi populer
 
 
 def test_api_booming_validation_and_errors(client, monkeypatch):
@@ -342,3 +346,57 @@ def test_api_pages_and_recent(client):
         assert client.get(path).status_code == 200
     assert 'Lagi booming apa?' in client.get("/").text
     assert client.get("/api/booming/recent").json() == {"items": []}
+
+
+# --------------------------------------------------------------------------- hanya yang naik (rising_only)
+
+
+def rising_params(**kw):
+    return booming_params(rising_only=True, **kw)
+
+
+def test_rising_only_hides_popular_and_adds_percent_and_opportunity(tmp_db):
+    out = run_booming(rising_params(), provider=RelProvider(GOOD), now=1000)
+    assert [i["query"] for i in out["items"]] == ["telkom", "garuda"] and out["rising_only"] is True
+    assert out["popular_count"] == 1                      # ada 1 yang populer, tapi tidak ditampilkan
+    tel, gar = out["items"]
+    assert tel["label"] == "Breakout" and gar["label"] == "+300%"
+    assert tel["peluang"]["skor"] > gar["peluang"]["skor"] > 0
+    assert any("Hanya 2 pencarian yang tercatat naik" in n for n in out["notes"])
+    assert not any("populer" in n.lower() and "diisi" in n for n in out["notes"])
+
+
+def test_rising_only_with_nothing_rising_is_empty_not_an_error(tmp_db):
+    out = run_booming(rising_params(), provider=RelProvider({"rising": [], "top": [R("x", 100), R("y", 90)]}), now=1)
+    assert out["items"] == [] and out["rising_count"] == 0 and out["popular_count"] == 2
+    # tanpa rising_only perilakunya tetap seperti dulu: terisi populer
+    full = run_booming(booming_params(), provider=RelProvider({"rising": [], "top": [R("x", 100)]}), now=1)
+    assert [i["kind"] for i in full["items"]] == ["populer"]
+
+
+def test_rising_only_is_a_separate_cache_entry_and_old_cache_keys_are_unchanged(tmp_db):
+    prov = RelProvider(GOOD)
+    run_booming(booming_params(), provider=prov, now=1000)
+    assert "rising_only" not in booming_params()          # kunci cache lama tidak berubah
+    out = run_booming(rising_params(), provider=prov, now=1001)
+    assert prov.calls == 2 and out["cached"] is False      # entri baru, bukan hasil campuran
+    assert run_booming(rising_params(), provider=prov, now=1002)["cached"] is True
+
+
+def test_sub_lookups_do_not_flood_recent_searches(tmp_db):
+    prov = RelProvider(GOOD)
+    run_booming(rising_params(), provider=prov, now=1000)
+    run_booming(normalize_booming("telkom", "ID", 0, "now 7-d", "", 10, rising_only=True, sub=True),
+                provider=RelProvider(GOOD, key="telkom"), now=1001)
+    assert [p["topic"] for p in db.recent_searches(8, kind="booming")] == ["BUMN"]
+
+
+def test_one_period_opportunity_short_window_gets_early_signal_and_matches_formula():
+    item = {"query": "bumn 2026", "value": 300, "breakout": False}
+    short = insight.opportunity_one_period(item, "bumn", "now 7-d")
+    long_ = insight.opportunity_one_period(item, "bumn", "today 3-m")
+    assert short["bagian"]["dini"] == 15 and long_["bagian"]["dini"] == 0
+    assert short["bagian"]["relevan"] == 10 and short["bagian"]["konsistensi"] == 6
+    assert insight.opportunity_one_period({"query": "danantara", "value": 300, "breakout": False},
+                                          "bumn", "now 7-d")["bagian"]["relevan"] == 0
+    assert 0 <= insight.opportunity_one_period({"query": "x", "value": 9999, "breakout": True}, "t", "now 1-d")["skor"] <= 100

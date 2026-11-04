@@ -84,7 +84,8 @@ def normalize_params(keywords, geo: str = "", category=0, time_range: str = "tod
 
 
 def normalize_booming(topic, geo: str = "ID", category=0, time_range: str = "now 7-d",
-                      gprop: str = "", limit=BOOMING_DEFAULT_LIMIT) -> dict:
+                      gprop: str = "", limit=BOOMING_DEFAULT_LIMIT, *, rising_only: bool = False,
+                      sub: bool = False) -> dict:
     """Validasi masukan halaman Booming: satu topik, bukan daftar keyword."""
     topic = str(topic or "").strip()
     if "," in topic or "\n" in topic:
@@ -97,9 +98,13 @@ def normalize_booming(topic, geo: str = "ID", category=0, time_range: str = "now
         raise ValueError("Jumlah hasil harus berupa angka.") from None
     if not 1 <= limit <= 20:
         raise ValueError("Jumlah hasil harus antara 1 dan 20.")
-    return {"kind": "booming", "topic": base["keywords"][0], "keywords": base["keywords"],
-            "geo": base["geo"], "category": base["category"], "time": base["time"],
-            "gprop": base["gprop"], "parts": ["related"], "limit": limit}
+    # ``sub`` = pencarian turunan dari panel keyword: kind berbeda agar tidak membanjiri "Pencarian terakhir".
+    params = {"kind": "booming-sub" if sub else "booming", "topic": base["keywords"][0],
+              "keywords": base["keywords"], "geo": base["geo"], "category": base["category"],
+              "time": base["time"], "gprop": base["gprop"], "parts": ["related"], "limit": limit}
+    if rising_only:  # hanya ditambahkan bila aktif, supaya kunci cache lama tidak berubah
+        params["rising_only"] = True
+    return params
 
 
 # ------------------------------------------------------------------ cache
@@ -181,7 +186,8 @@ def _is_breakout(r: dict) -> bool:
     return str(r.get("label", "")).strip().lower() == "breakout" or r.get("value", 0) >= BREAKOUT_VALUE
 
 
-def rank_booming(rel: dict, topic: str, limit: int = BOOMING_DEFAULT_LIMIT) -> list[dict]:
+def rank_booming(rel: dict, topic: str, limit: int = BOOMING_DEFAULT_LIMIT, *,
+                 include_popular: bool = True) -> list[dict]:
     """Susun daftar 'sedang booming' dari query terkait sebuah topik.
 
     1. Query yang *naik* (rising): Breakout dulu (urutan dari Google dipertahankan), lalu
@@ -209,8 +215,9 @@ def rank_booming(rel: dict, topic: str, limit: int = BOOMING_DEFAULT_LIMIT) -> l
     rising.sort(key=lambda t: (0, 0, t[0]) if _is_breakout(t[1]) else (1, -int(t[1].get("value", 0) or 0), t[0]))
     for _, r in rising:
         add(r, "naik")
-    for r in rel.get("top") or []:
-        add(r, "populer")
+    if include_popular:
+        for r in rel.get("top") or []:
+            add(r, "populer")
     return items
 
 
@@ -230,15 +237,24 @@ def run_booming(params: dict, *, demo: bool = False, refresh: bool = False, prov
             raise ExploreError(
                 "Google tidak memberi daftar pencarian terkait untuk topik ini.",
                 hint="Coba topik yang lebih umum, rentang waktu lebih panjang (30 atau 90 hari), atau wilayah lebih luas.")
-        items = rank_booming(rel, topic, limit)
-        if not items:
+        only = bool(params.get("rising_only"))
+        items = rank_booming(rel, topic, limit, include_popular=not only)
+        popular_count = (sum(1 for i in rank_booming(rel, topic, 20) if i["kind"] == "populer") if only else None)
+        for i in items:
+            if i["kind"] == "naik":
+                i["peluang"] = insight.opportunity_one_period(i, topic, params["time"])
+        if not items and not only:
             raise ExploreError(
                 "Belum ada pencarian terkait yang cukup besar untuk topik ini pada periode tersebut.",
                 hint="Coba topik yang lebih umum, rentang waktu lebih panjang (30 atau 90 hari), atau wilayah lebih luas.")
 
         notes = list(res.get("notes", []))
         rising_count = sum(1 for i in items if i["kind"] == "naik")
-        if rising_count == 0:
+        if only:
+            if 0 < rising_count < limit:
+                notes.append(f"Hanya {rising_count} pencarian yang tercatat naik pada periode ini. "
+                             "Pencarian yang sekadar populer tidak ditampilkan.")
+        elif rising_count == 0:
             notes.append("Tidak ada pencarian yang tercatat 'naik' pada periode ini; "
                          "yang ditampilkan adalah pencarian yang paling sering dicari.")
         elif rising_count < len(items):
@@ -249,6 +265,7 @@ def run_booming(params: dict, *, demo: bool = False, refresh: bool = False, prov
             "time": params["time"], "gprop": params["gprop"], "limit": limit,
             "source": res.get("source", ""), "fetched_at": res.get("fetched_at", ""),
             "items": items, "rising_count": rising_count, "notes": notes,
+            "rising_only": only, "popular_count": popular_count,
         }
 
     out = _cached(params, _booming_ttl_seconds(), fetch, demo=demo, refresh=refresh, now=now)
