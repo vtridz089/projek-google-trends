@@ -226,6 +226,31 @@ def api_booming(
         raise HTTPException(502, detail) from exc
 
 
+@app.get("/api/research")
+def api_research(
+    topic: str = "",
+    geo: str = DEFAULT_GEO,
+    cat: int = 0,
+    expand: int = Query(3, ge=0, le=explore_service.RESEARCH_MAX_EXPAND),
+    demo: bool = False,
+    refresh: bool = False,
+):
+    """Riset topik: gabungan 4 rentang waktu (24 jam sampai 90 hari) dan turunan keyword teratas.
+
+    Otomatis pekerjaan manual di Google Trends. Satu riset memakai sekitar 4 + ``expand`` permintaan
+    ke sumber data (hasil di-cache, jadi pengulangan cepat)."""
+    try:
+        explore_service.normalize_booming(topic, geo, cat, "now 7-d", "", 10)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        return explore_service.run_research(topic, geo, cat, expand=expand, demo=demo, refresh=refresh)
+    except ExploreError as exc:
+        log.warning("Riset gagal: %s", exc)
+        detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")
+        raise HTTPException(502, detail) from exc
+
+
 @app.get("/api/booming/recent")
 def api_booming_recent(limit: int = Query(8, ge=1, le=20)):
     return {"items": db.recent_searches(limit, kind="booming")}
@@ -320,6 +345,11 @@ def api_discovery_run(refresh: bool = False):
             log.warning("Discovery topik '%s' gagal: %s", item["topic"], exc)
             report["errors"].append({"topic": item["topic"], "error": str(exc)})
     return report
+
+
+@app.get("/riset")
+def research_page():
+    return FileResponse(STATIC_DIR / "research.html")
 
 
 @app.get("/discovery")

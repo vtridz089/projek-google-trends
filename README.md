@@ -6,13 +6,27 @@ tren harian per negara.
 
 FastAPI + SQLite + halaman web biasa (Chart.js hanya di halaman Jelajah).
 
-## Tiga halaman
+## Halaman
 
 | Halaman | Alamat | Fungsi |
 |---|---|---|
+| **Riset topik** | `/riset` | Ketik satu topik, dapatkan satu daftar keyword yang naik di **24 jam, 7 hari, 30 hari, dan 90 hari** sekaligus, ditandai *Baru naik* / *Naik konsisten*, plus turunan dari keyword teratas. Menggantikan riset manual di trends.google.com. Bisa disaring dan diunduh sebagai CSV. |
 | **Booming per topik** | `/` | Ketik topik, tampil top 10 pencarian yang sedang naik paling tajam. Filter periode (24 jam sampai 90 hari), wilayah, dan kategori. Hasil bisa diunduh sebagai CSV. |
 | **Tren hari ini** | `/hari-ini` | Daftar tren harian per negara dari feed RSS, dengan status baru/naik/turun dibanding kemarin. |
 | **Jelajah keyword** | `/explore` | Bandingkan hingga 5 keyword: grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah. |
+
+### Cara kerja "Riset topik"
+
+Satu riset = 4 permintaan (satu per rentang waktu) + sampai 5 permintaan turunan. Semua memakai data
+*pencarian terkait* Google Trends yang sama dengan yang dilihat manual, lalu digabung:
+
+- **Baru naik**: naik hanya di 24 jam / 7 hari, belum terlihat di 30 / 90 hari (kandidat yang baru mulai ramai).
+- **Naik konsisten**: naik di 3 rentang atau lebih.
+- **Turunan**: keyword memuat semua kata topik (mis. "bumn 2026" untuk "bumn").
+- Urutan: Breakout dulu, lalu paling banyak rentang yang naik, lalu kenaikan terbesar. Yang hanya populer ditaruh paling akhir dan disembunyikan secara bawaan.
+- Turunan tingkat dua diambil dari keyword naik teratas (7 hari). Rentang atau turunan yang gagal dicatat di halaman tanpa menggagalkan seluruh riset.
+
+Instagram dan TikTok **belum** termasuk: keduanya tidak punya sumber resmi gratis untuk keyword yang sedang naik.
 
 ### Cara kerja "booming"
 

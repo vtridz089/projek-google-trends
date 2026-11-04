@@ -30,6 +30,7 @@ kampus/sekolah dan instansi Anda. Bagian bertanda **[ISI]** adalah hal yang hany
 
 ## Bab IV. Implementasi dan Pengujian
 - Struktur proyek dan penjelasan tiap modul (`collector`, `explore`, `explore_service`, `db`, `main`, `cli`, halaman di `static/`).
+- Cara kerja "Riset topik" (`merge_research`, `run_research`): penggabungan 4 rentang waktu, pola baru/konsisten, dan turunan tingkat dua.
 - Cara kerja peringkat "booming" (`rank_booming`): Breakout, persentase kenaikan, dan pengisian dengan pencarian populer.
 - Implementasi penanganan kegagalan (percobaan ulang, pesan error, job Actions merah).
 - **Pengujian:** hasil `python -m pytest`, uji manual tiap tombol dan filter, uji pengambilan data

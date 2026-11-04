@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TrendWatch · Riset topik</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+  <nav class="tabs" aria-label="Halaman">
+    <a href="/riset" aria-current="page">Riset topik</a>
+    <a href="/">Booming per topik</a>
+    <a href="/hari-ini">Tren hari ini</a>
+    <a href="/explore">Jelajah keyword</a>
+    <a href="/discovery">Daily Discovery</a>
+  </nav>
+
+  <header>
+    <div>
+      <h1>Riset topik</h1>
+      <div class="sub">Satu topik, empat rentang waktu sekaligus, lengkap dengan turunannya. Menggantikan bolak-balik membuka Google Trends.</div>
+    </div>
+  </header>
+
+  <form id="form" class="card searchform" autocomplete="off">
+    <label class="field">
+      <span>Topik (satu topik per riset)</span>
+      <input id="topic" type="text" maxlength="100" placeholder="mis. BUMN" required>
+    </label>
+    <div class="row">
+      <label class="field"><span>Wilayah</span>
+        <select id="geo">
+          <option value="ID" selected>Indonesia</option>
+          <option value="">Seluruh dunia</option>
+          <option value="US">Amerika Serikat</option>
+          <option value="GB">Inggris</option>
+          <option value="MY">Malaysia</option>
+          <option value="SG">Singapura</option>
+        </select>
+      </label>
+      <label class="field"><span>Kategori (opsional)</span><select id="cat"><option value="0">Semua kategori</option></select></label>
+      <label class="field"><span>Telusuri turunan dari</span>
+        <select id="expand">
+          <option value="0">Tidak ada (tercepat)</option>
+          <option value="3" selected>3 keyword teratas</option>
+          <option value="5">5 keyword teratas</option>
+        </select>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="primary" id="go" type="submit">Mulai riset</button>
+      <label class="check"><input type="checkbox" id="demo"> Pakai data contoh (tanpa Google)</label>
+      <label class="check"><input type="checkbox" id="refresh"> Abaikan cache</label>
+      <span class="status" id="status" role="status" aria-live="polite"></span>
+    </div>
+  </form>
+
+  <p id="msg" role="status"></p>
+  <span id="copystatus" class="sr-only" role="status" aria-live="polite"></span>
+
+  <section class="card intro" id="intro">
+    <p><b>Ketik topik, misalnya "BUMN", lalu klik Mulai riset.</b></p>
+    <p>Hasilnya satu daftar keyword yang sedang naik di <i>24 jam, 7 hari, 30 hari, dan 90 hari</i>, ditandai mana yang baru muncul dan mana yang naik terus.</p>
+    <p>Satu riset memerlukan beberapa permintaan ke Google, jadi bisa memakan 10 sampai 30 detik. Mengulang riset yang sama cepat karena hasilnya disimpan sementara.</p>
+  </section>
+
+  <div id="results" hidden>
+    <div class="metabar" id="meta"></div>
+    <div class="notes" id="notes" hidden><ul id="notelist"></ul></div>
+
+    <section class="card">
+      <div class="cardhead">
+        <div>
+          <h2 style="margin:0" id="title"></h2>
+          <div class="sub" id="subtitle"></div>
+        </div>
+        <div class="actions">
+          <button type="button" id="copyall" title="Salin keyword yang sedang tampil, satu per baris">Salin semua</button>
+          <button type="button" id="csv">Unduh CSV</button>
+        </div>
+      </div>
+      <div class="chips" id="filters" role="group" aria-label="Saring keyword" style="margin:4px 0 8px"></div>
+      <div class="rhead" aria-hidden="true"><span></span><span>Keyword</span><span>24 jam</span><span>7 hari</span><span>30 hari</span><span>90 hari</span><span></span></div>
+      <ol class="rtable" id="list"></ol>
+      <div class="explain">
+        <b>Baru naik</b> = naik hanya di 24 jam atau 7 hari, belum terlihat di rentang lebih panjang (kandidat topik yang baru mulai ramai).
+        <b>Naik konsisten</b> = naik di 3 rentang atau lebih. <b>Turunan</b> = keyword memuat semua kata topik.
+        <b>Breakout</b> = naik lebih dari 5.000%. <b>populer</b> = sering dicari tetapi tidak tercatat naik. Angka bersifat relatif, bukan jumlah pencarian.
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    Data berasal dari Google Trends (langsung atau lewat SerpApi): "pencarian terkait" per rentang waktu, sama dengan yang dilihat manual di trends.google.com.
+    Topik yang Anda ketik dikirim ke sumber data tersebut.
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const WIN = [["now 1-d", "24 jam"], ["now 7-d", "7 hari"], ["today 1-m", "30 hari"], ["today 3-m", "90 hari"]];
+const PATTERN = { baru: "Baru naik", konsisten: "Naik konsisten", naik: "Naik", populer: "Hanya populer" };
+const SOURCE_LABEL = { google: "Google Trends (langsung)", serpapi: "Google Trends via SerpApi",
+                       mock: "Data contoh (bukan dari Google)" };
+const state = { data: null, filter: "semua", withPopular: false };
+
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) node.append(c);
+  return node;
+}
+function showMsg(text, kind) { const m = $("msg"); m.textContent = text || ""; m.className = text ? kind : ""; }
+async function api(path) {
+  const res = await fetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Permintaan gagal (" + res.status + ")");
+  return body;
+}
+function csvCell(v) {
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;  // cegah dibaca sebagai rumus di Excel
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function optionText(id, value) {
+  const o = [...$(id).options].find(x => x.value === String(value));
+  return o ? o.textContent.trim() : String(value);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* coba cadangan */ }
+  const ta = el("textarea", { readonly: "", "aria-hidden": "true", tabindex: "-1" });
+  ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.append(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+  ta.remove();
+  return ok;
+}
+function flash(btn, ok, message) {
+  if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+  btn.textContent = ok ? "Tersalin ✓" : "Gagal menyalin";
+  $("copystatus").textContent = ok ? message : "Gagal menyalin. Sorot teksnya lalu salin manual.";
+  clearTimeout(btn._t);
+  btn._t = setTimeout(() => { btn.textContent = btn.dataset.label; $("copystatus").textContent = ""; }, 1600);
+}
+
+const FILTERS = [
+  ["semua", "Semua", () => true],
+  ["turunan", "Turunan langsung", r => r.turunan],
+  ["baru", "Baru naik", r => r.pattern === "baru"],
+  ["konsisten", "Naik konsisten", r => r.pattern === "konsisten"],
+];
+function visibleRows() {
+  const d = state.data; if (!d) return [];
+  const pass = FILTERS.find(f => f[0] === state.filter)[2];
+  return d.items.filter(r => pass(r) && (state.withPopular || r.rising_count > 0));
+}
+
+function cellFor(r, win, label, i) {
+  const c = r.windows[win];
+  const text = !c ? "–" : c.kind === "populer" ? "populer" : c.breakout ? "Breakout" : c.label;
+  const cls = "cell c" + (i + 1) + (c && c.kind === "naik" ? (c.breakout ? " brk" : " on") : "");
+  return el("span", { class: cls }, [el("span", { class: "wl", text: label }), text]);
+}
+function row(r, d) {
+  const q = encodeURIComponent(r.query);
+  const copy = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin “" + r.query + "”" });
+  copy.addEventListener("click", async () => flash(copy, await copyText(r.query), "“" + r.query + "” disalin"));
+  const google = el("a", { href: "https://trends.google.com/trends/explore?q=" + q + "&geo=" + encodeURIComponent(d.geo) +
+                           "&date=now%207-d", target: "_blank", rel: "noopener noreferrer", text: "Google ↗" });
+  const tags = el("div", { class: "tags" }, [el("span", { class: "pill pat-" + r.pattern, text: PATTERN[r.pattern] })]);
+  if (r.turunan) tags.append(el("span", { class: "pill", text: "turunan" }));
+  const li = el("li", { class: "rrow" }, [
+    el("span", { class: "no", text: String(r.rank) }),
+    el("div", { class: "kw-wrap" }, [el("div", { class: "kw", text: r.query }), tags]),
+    ...WIN.map(([w, l], i) => cellFor(r, w, l, i)),
+    el("div", { class: "acts" }, [copy, google]),
+  ]);
+  if (r.children && r.children.length) {
+    const ul = el("ul");
+    for (const c of r.children) ul.append(el("li", {}, [el("span", { text: c.query }), el("span", { class: "v", text: c.label })]));
+    li.append(el("div", { class: "kids" }, [el("div", { class: "hd", text: "Turunan yang naik dari “" + r.query + "” (7 hari)" }), ul]));
+  }
+  return li;
+}
+function renderList() {
+  const d = state.data; const rows = visibleRows();
+  const list = $("list"); list.replaceChildren();
+  if (!rows.length) list.append(el("li", { class: "empty", text: "Tidak ada keyword untuk saringan ini." }));
+  rows.forEach(r => list.append(row(r, d)));
+  $("subtitle").textContent = rows.length + " dari " + d.items.length + " keyword ditampilkan";
+}
+function renderFilters() {
+  const d = state.data; const box = $("filters"); box.replaceChildren(el("span", { class: "lbl", text: "Saring:" }));
+  for (const [id, name, fn] of FILTERS) {
+    const n = d.items.filter(r => fn(r) && r.rising_count > 0).length;
+    const b = el("button", { type: "button", class: "chip", text: name + " (" + n + ")", "aria-pressed": String(state.filter === id) });
+    b.addEventListener("click", () => { state.filter = id; renderFilters(); renderList(); });
+    box.append(b);
+  }
+  const popular = d.items.filter(r => r.rising_count === 0).length;
+  if (popular) {
+    const b = el("button", { type: "button", class: "chip", text: "Sertakan yang hanya populer (" + popular + ")",
+                             "aria-pressed": String(state.withPopular) });
+    b.addEventListener("click", () => { state.withPopular = !state.withPopular; renderFilters(); renderList(); });
+    box.append(b);
+  }
+}
+function render(d) {
+  state.data = d; state.filter = "semua"; state.withPopular = false;
+  $("intro").hidden = true; $("results").hidden = false;
+  $("title").textContent = "Riset: " + d.topic;
+  const meta = $("meta"); meta.replaceChildren();
+  meta.append(el("span", { class: "pill" + (d.source === "mock" ? " warn" : ""), text: SOURCE_LABEL[d.source] || d.source }));
+  meta.append(el("span", { text: optionText("geo", d.geo) + " · " + d.rising_total + " keyword naik · " + d.expanded + " ditelusuri turunannya" }));
+  const notes = [...(d.notes || [])];
+  if (d.stale) notes.push("Sebagian data berasal dari cache lama karena sumber sedang gagal.");
+  for (const e of d.errors || []) notes.push("Gagal mengambil " + e.scope + ": " + e.error);
+  $("notes").hidden = !notes.length;
+  $("notelist").replaceChildren(...notes.map(n => el("li", { text: n })));
+  renderFilters(); renderList();
+}
+
+async function research() {
+  const topic = $("topic").value.trim(); if (!topic) return;
+  const p = new URLSearchParams({ topic, geo: $("geo").value, cat: $("cat").value, expand: $("expand").value });
+  if ($("demo").checked) p.set("demo", "true");
+  if ($("refresh").checked) p.set("refresh", "true");
+  showMsg(""); $("go").disabled = true; document.body.classList.add("loading");
+  $("status").textContent = "Mengambil 4 rentang waktu" + ($("expand").value !== "0" ? " dan turunannya" : "") + "… bisa 10–30 detik";
+  try {
+    render(await api("/api/research?" + p.toString()));
+    $("status").textContent = "";
+    history.replaceState(null, "", "?" + new URLSearchParams({ topic, geo: $("geo").value, cat: $("cat").value, expand: $("expand").value }));
+  } catch (err) {
+    $("status").textContent = "";
+    showMsg(err.message, "err");
+  } finally {
+    $("go").disabled = false; document.body.classList.remove("loading");
+  }
+}
+
+function downloadCsv() {
+  const d = state.data; if (!d) return;
+  const head = ["Keyword", "Pola", "Turunan langsung", ...WIN.map(w => w[1]), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
+  const rows = [head];
+  visibleRows().forEach(r => rows.push([r.query, PATTERN[r.pattern], r.turunan ? "ya" : "tidak",
+    ...WIN.map(([w]) => { const c = r.windows[w]; return !c ? "" : c.kind === "populer" ? "populer" : c.label; }),
+    (r.children || []).map(c => c.query).join("; "), d.topic, optionText("geo", d.geo)]));
+  const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })),
+                      download: "riset-" + d.topic.replace(/[^\w-]+/g, "_").slice(0, 40) + ".csv" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function copyAll() {
+  const rows = visibleRows(); if (!rows.length) return;
+  flash($("copyall"), await copyText(rows.map(r => r.query).join("\n")), rows.length + " keyword disalin");
+}
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); research(); });
+$("csv").addEventListener("click", downloadCsv);
+$("copyall").addEventListener("click", copyAll);
+(async function init() {
+  try {
+    const meta = await api("/api/categories");
+    for (const c of meta.categories) if (c.id) $("cat").append(el("option", { value: String(c.id), text: c.name.trim() }));
+  } catch (_) { /* kategori opsional */ }
+  const u = new URLSearchParams(location.search);
+  if (u.get("topic")) {
+    $("topic").value = u.get("topic");
+    if (u.get("geo") !== null) $("geo").value = u.get("geo");
+    if (u.get("cat")) $("cat").value = u.get("cat");
+    if (u.get("expand")) $("expand").value = u.get("expand");
+    if (u.get("demo")) $("demo").checked = true;
+    research();
+  }
+})();
+</script>
+</body>
+</html>

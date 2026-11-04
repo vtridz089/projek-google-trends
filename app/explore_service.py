@@ -254,3 +254,114 @@ def run_booming(params: dict, *, demo: bool = False, refresh: bool = False, prov
     out = _cached(params, _booming_ttl_seconds(), fetch, demo=demo, refresh=refresh, now=now)
     out["today"] = db.today_matches(params["geo"], topic)  # selalu terbaru, tidak ikut cache
     return out
+
+
+# ---------------------------------------------------------------------------
+# Riset topik: menjalankan beberapa rentang waktu sekaligus lalu menggabungkannya.
+# Ini menggantikan pekerjaan manual di Google Trends (ganti rentang waktu satu per satu,
+# salin hasilnya). Semua angka tetap berasal dari "related queries" Google Trends.
+# ---------------------------------------------------------------------------
+RESEARCH_WINDOWS: list[tuple[str, str]] = [
+    ("now 1-d", "24 jam"), ("now 7-d", "7 hari"), ("today 1-m", "30 hari"), ("today 3-m", "90 hari"),
+]
+RESEARCH_PER_WINDOW = 20
+RESEARCH_MAX_EXPAND = 5
+CHILD_LIMIT = 8
+_SHORT_WINDOWS = ("now 1-d", "now 7-d")
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"\w+", text.lower()))
+
+
+def merge_research(topic: str, per_window: dict[str, list[dict]]) -> list[dict]:
+    """Gabungkan hasil beberapa rentang waktu menjadi satu daftar keyword.
+
+    Pola:
+      - ``baru``: naik hanya di rentang pendek (24 jam / 7 hari), belum terlihat di 30/90 hari.
+      - ``konsisten``: naik di tiga rentang atau lebih.
+      - ``naik``: naik di sebagian rentang lainnya.
+      - ``populer``: hanya sering dicari, tidak tercatat naik di rentang mana pun.
+    ``turunan`` bernilai True bila semua kata topik ada di keyword (mis. "bumn 2026" untuk "bumn").
+    """
+    topic_tokens = _tokens(topic)
+    merged: dict[str, dict] = {}
+    for window, items in per_window.items():
+        for it in items:
+            key = it["query"].strip().lower()
+            row = merged.setdefault(key, {"query": it["query"], "windows": {}})
+            row["windows"][window] = {"kind": it["kind"], "label": it["label"],
+                                      "value": it["value"], "breakout": it["breakout"]}
+    out: list[dict] = []
+    for row in merged.values():
+        rising = [w for w, c in row["windows"].items() if c["kind"] == "naik"]
+        max_value = max((c["value"] for w, c in row["windows"].items() if c["kind"] == "naik"), default=0)
+        breakout = any(c["breakout"] for c in row["windows"].values())
+        if not rising:
+            pattern = "populer"
+        elif len(rising) >= 3:
+            pattern = "konsisten"
+        elif all(w in _SHORT_WINDOWS for w in rising):
+            pattern = "baru"
+        else:
+            pattern = "naik"
+        row.update(rising_in=rising, rising_count=len(rising), max_value=max_value, breakout=breakout,
+                   pattern=pattern, turunan=bool(topic_tokens) and topic_tokens <= _tokens(row["query"]),
+                   children=[])
+        out.append(row)
+    out.sort(key=lambda r: (r["rising_count"] == 0, not r["breakout"], -r["rising_count"], -r["max_value"],
+                            r["query"].lower()))
+    for i, r in enumerate(out, 1):
+        r["rank"] = i
+    return out
+
+
+def run_research(topic, geo: str = "ID", category=0, *, expand: int = 3, demo: bool = False,
+                 refresh: bool = False, provider=None, now: float | None = None) -> dict:
+    """Riset satu topik: 4 rentang waktu + turunan tingkat dua untuk keyword teratas.
+
+    Tiap rentang memakai cache Booming, jadi mengulang riset yang sama tidak menembak sumber lagi.
+    Rentang atau turunan yang gagal dicatat di ``errors`` tanpa menggagalkan seluruh riset;
+    bila semua rentang gagal, error pertama dilempar.
+    """
+    expand = max(0, min(int(expand), RESEARCH_MAX_EXPAND))
+    per_window: dict[str, list[dict]] = {}
+    errors: list[dict] = []
+    first_error: ExploreError | None = None
+    meta: dict = {}
+    notes: list[str] = []
+
+    def one(time_range: str, query: str, limit: int) -> dict:
+        params = normalize_booming(query, geo, category, time_range, "", limit)
+        return run_booming(params, demo=demo, refresh=refresh, provider=provider, now=now)
+
+    for window, label in RESEARCH_WINDOWS:
+        try:
+            res = one(window, topic, RESEARCH_PER_WINDOW)
+        except ExploreError as exc:
+            first_error = first_error or exc
+            errors.append({"scope": label, "error": str(exc)})
+            continue
+        per_window[window] = res["items"]
+        meta = meta or {"topic": res["topic"], "geo": res["geo"], "category": res["category"],
+                        "source": res.get("source", "")}
+        notes += [n for n in res.get("notes", []) if n not in notes]
+        meta["stale"] = meta.get("stale", False) or bool(res.get("stale"))
+    if not per_window:
+        raise first_error or ExploreError("Riset gagal.")
+
+    rows = merge_research(meta["topic"], per_window)
+    expandable = [r for r in rows if r["rising_count"] > 0][:expand]
+    for r in expandable:
+        try:
+            res = one("now 7-d", r["query"], 10)
+        except ExploreError as exc:
+            errors.append({"scope": f"turunan “{r['query']}”", "error": str(exc)})
+            continue
+        r["children"] = [{"query": c["query"], "label": c["label"], "breakout": c["breakout"]}
+                         for c in res["items"] if c["kind"] == "naik"][:CHILD_LIMIT]
+    return {
+        **meta, "windows": [{"value": v, "name": n, "ok": v in per_window} for v, n in RESEARCH_WINDOWS],
+        "items": rows, "rising_total": sum(1 for r in rows if r["rising_count"] > 0),
+        "errors": errors, "notes": notes, "expanded": len(expandable),
+    }
