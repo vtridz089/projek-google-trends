@@ -82,6 +82,14 @@
         </div>
       </div>
       <div class="chips" id="filters" role="group" aria-label="Saring keyword" style="margin:4px 0 8px"></div>
+      <div class="toolbar2">
+        <label>Urutkan <select id="sort"><option value="urut">Pertumbuhan (urutan Google)</option><option value="peluang">Skor peluang</option></select></label>
+        <label>Maksud <select id="intent"><option value="">Semua</option></select></label>
+        <span class="seg" role="group" aria-label="Tampilan">
+          <button type="button" id="v-daftar" aria-pressed="true">Daftar</button>
+          <button type="button" id="v-kelompok" aria-pressed="false">Kelompok</button>
+        </span>
+      </div>
       <div class="rhead" aria-hidden="true"><span></span><span>Keyword</span><span>24 jam</span><span>7 hari</span><span>30 hari</span><span>90 hari</span><span></span></div>
       <ol class="rtable" id="list"></ol>
       <div class="explain">
@@ -89,6 +97,14 @@
         <b>Naik konsisten</b> = naik di 3 rentang atau lebih. <b>Turunan</b> = keyword memuat semua kata topik.
         <b>Breakout</b> = naik lebih dari 5.000%. <b>populer</b> = sering dicari tetapi tidak tercatat naik. Angka bersifat relatif, bukan jumlah pencarian.
       </div>
+      <details class="explain">
+        <summary><b>Cara membaca skor peluang dan maksud pencarian</b></summary>
+        <p><b>Skor peluang (0–100)</b> adalah aturan sederhana dari kami, bukan data Google dan bukan volume pencarian:
+        pertumbuhan maks 40 (Breakout penuh), konsistensi maks 25 (berapa dari 4 rentang yang naik), sinyal dini 15
+        (naik hanya di 24 jam / 7 hari), belum pernah tersimpan 10, memuat semua kata topik 10. Arahkan kursor ke skor untuk melihat rinciannya.</p>
+        <p><b>Maksud pencarian</b> ditebak dari kata di keyword (mis. "harga", "login", "syarat", "terbaru"), jadi bisa meleset. Pakai sebagai petunjuk, bukan kepastian.</p>
+        <p><b>Kelompok</b> mengumpulkan keyword yang memakai kata pembeda yang sama (mis. "2026") supaya variasi tidak terbaca sebagai topik terpisah.</p>
+      </details>
     </section>
   </div>
 
@@ -104,7 +120,9 @@ const WIN = [["now 1-d", "24 jam"], ["now 7-d", "7 hari"], ["today 1-m", "30 har
 const PATTERN = { baru: "Baru naik", konsisten: "Naik konsisten", naik: "Naik", populer: "Hanya populer" };
 const SOURCE_LABEL = { google: "Google Trends (langsung)", serpapi: "Google Trends via SerpApi",
                        mock: "Data contoh (bukan dari Google)" };
-const state = { data: null, filter: "semua", withPopular: false };
+const state = { data: null, filter: "semua", withPopular: false, sort: "urut", intent: "", view: "daftar" };
+const INTENT = { transaksi: "Mau beli / harga", navigasi: "Cari situs / aplikasi", informasi: "Cari informasi", berita: "Cari kabar terbaru", umum: "Umum" };
+const LEVEL = { tinggi: "Tinggi", sedang: "Sedang", rendah: "Rendah" };
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
@@ -165,7 +183,9 @@ function filters() {
 function visibleRows() {
   const d = state.data; if (!d) return [];
   const pass = filters().find(f => f[0] === state.filter)[2];
-  return d.items.filter(r => pass(r) && (state.withPopular || r.rising_count > 0));
+  const rows = d.items.filter(r => pass(r) && (state.withPopular || r.rising_count > 0) && (!state.intent || r.maksud === state.intent));
+  if (state.sort === "peluang") rows.sort((a, b) => b.peluang.skor - a.peluang.skor || a.rank - b.rank);
+  return rows;
 }
 
 function cellFor(r, win, label, i) {
@@ -182,6 +202,13 @@ function row(r, d) {
                            "&date=now%207-d", target: "_blank", rel: "noopener noreferrer", text: "Google ↗" });
   const tags = el("div", { class: "tags" }, [el("span", { class: "pill pat-" + r.pattern, text: PATTERN[r.pattern] })]);
   if (r.turunan) tags.append(el("span", { class: "pill", text: "turunan" }));
+  if (r.rising_count > 0) {
+    const b = r.peluang.bagian;
+    tags.append(el("span", { class: "pill lv-" + r.peluang.level, text: "Peluang " + r.peluang.skor,
+      title: "Pertumbuhan " + b.pertumbuhan + "/40 · Konsistensi " + b.konsistensi + "/25 · Sinyal dini " + b.dini + "/15 · Belum pernah tersimpan " + b.baru + "/10 · Relevan " + b.relevan + "/10" }));
+  }
+  tags.append(el("span", { class: "pill", text: INTENT[r.maksud] || r.maksud }));
+  if (r.hari_tersimpan > 0) tags.append(el("span", { class: "pill", text: "tersimpan " + r.hari_tersimpan + " hari" }));
   if (r.belum_pernah === true && r.rising_count > 0) tags.append(el("span", { class: "pill pat-baru", text: "belum pernah tersimpan" }));
   const li = el("li", { class: "rrow" }, [
     el("span", { class: "no", text: String(r.rank) }),
@@ -200,7 +227,18 @@ function renderList() {
   const d = state.data; const rows = visibleRows();
   const list = $("list"); list.replaceChildren();
   if (!rows.length) list.append(el("li", { class: "empty", text: "Tidak ada keyword untuk saringan ini." }));
-  rows.forEach(r => list.append(row(r, d)));
+  if (state.view === "kelompok") {
+    const byName = new Map();
+    rows.forEach(r => { if (!byName.has(r.kelompok)) byName.set(r.kelompok, []); byName.get(r.kelompok).push(r); });
+    for (const g of d.kelompok) {
+      const members = byName.get(g.nama); if (!members) continue;
+      list.append(el("li", { class: "ghead", text: (g.nama === "Lainnya" ? "Lainnya (tanpa kata pembeda bersama)" : "Kata pembeda: “" + g.nama + "”") +
+        " · " + members.length + " keyword · skor terbaik " + Math.max(...members.map(m => m.peluang.skor)) }));
+      members.forEach(r => list.append(row(r, d)));
+    }
+  } else {
+    rows.forEach(r => list.append(row(r, d)));
+  }
   $("subtitle").textContent = rows.length + " dari " + d.items.length + " keyword ditampilkan";
 }
 function renderFilters() {
@@ -220,7 +258,10 @@ function renderFilters() {
   }
 }
 function render(d) {
-  state.data = d; state.filter = "semua"; state.withPopular = false;
+  state.data = d; state.filter = "semua"; state.withPopular = false; state.intent = "";
+  const sel = $("intent"); sel.replaceChildren(el("option", { value: "", text: "Semua" }));
+  for (const k of Object.keys(INTENT)) if (d.items.some(r => r.maksud === k && r.rising_count > 0))
+    sel.append(el("option", { value: k, text: INTENT[k] }));
   $("intro").hidden = true; $("results").hidden = false;
   $("title").textContent = "Riset: " + d.topic;
   const meta = $("meta"); meta.replaceChildren();
@@ -270,7 +311,7 @@ async function saveToDiscovery() {
     const res = await fetch("/api/research/save", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic: d.topic, geo: d.geo, category: d.category, source: d.source,
         items: rows.map(r => ({ keyword: r.query, rising: r.rising_count > 0, breakout: r.breakout,
-                                score: r.max_value, label: r.breakout ? "Breakout" : (r.rising_count ? "+" + r.max_value + "%" : "") })) }) });
+                                score: r.max_value, opportunity: r.peluang.skor, label: r.breakout ? "Breakout" : (r.rising_count ? "+" + r.max_value + "%" : "") })) }) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Gagal menyimpan (" + res.status + ")");
     showMsg(body.saved + " keyword disimpan. Topik “" + body.topic + "” ikut dipantau di Daily Discovery.", "ok");
@@ -282,9 +323,9 @@ async function saveToDiscovery() {
 }
 function downloadCsv() {
   const d = state.data; if (!d) return;
-  const head = ["Keyword", "Pola", "Turunan langsung", ...WIN.map(w => w[1]), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
+  const head = ["Keyword", "Pola", "Skor peluang", "Maksud pencarian", "Kelompok", "Hari tersimpan", "Turunan langsung", ...WIN.map(w => w[1]), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
   const rows = [head];
-  visibleRows().forEach(r => rows.push([r.query, PATTERN[r.pattern], r.turunan ? "ya" : "tidak",
+  visibleRows().forEach(r => rows.push([r.query, PATTERN[r.pattern], r.peluang.skor, INTENT[r.maksud] || r.maksud, r.kelompok, r.hari_tersimpan ?? "", r.turunan ? "ya" : "tidak",
     ...WIN.map(([w]) => { const c = r.windows[w]; return !c ? "" : c.kind === "populer" ? "populer" : c.label; }),
     (r.children || []).map(c => c.query).join("; "), d.topic, optionText("geo", d.geo)]));
   const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
@@ -301,6 +342,11 @@ async function copyAll() {
 $("form").addEventListener("submit", (e) => { e.preventDefault(); research(); });
 $("csv").addEventListener("click", downloadCsv);
 $("save").addEventListener("click", saveToDiscovery);
+$("sort").addEventListener("change", e => { state.sort = e.target.value; renderList(); });
+$("intent").addEventListener("change", e => { state.intent = e.target.value; renderList(); });
+for (const v of ["daftar", "kelompok"]) $("v-" + v).addEventListener("click", () => {
+  state.view = v; $("v-daftar").setAttribute("aria-pressed", String(v === "daftar"));
+  $("v-kelompok").setAttribute("aria-pressed", String(v === "kelompok")); renderList(); });
 $("copyall").addEventListener("click", copyAll);
 (async function init() {
   try {

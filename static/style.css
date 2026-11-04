@@ -237,3 +237,13 @@ body.loading #results { opacity: .55; transition: opacity .15s; }
   .rrow .cell .wl { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
   .rrow .acts { grid-column: 2 / -1; justify-content: flex-start; }
 }
+
+.toolbar2 { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.toolbar2 label { display: inline-flex; gap: 6px; align-items: center; }
+.toolbar2 select { font-size: 13px; padding: 4px 8px; }
+.ghead { padding: 14px 4px 4px; font-weight: 650; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+.pill.lv-tinggi { background: var(--up-bg); color: var(--up); font-weight: 650; }
+.pill.lv-sedang { background: var(--new-bg); color: var(--new); }
+.pill.lv-rendah { color: var(--muted); }
+details.explain p { margin: 6px 0; }
+details.explain summary { cursor: pointer; }

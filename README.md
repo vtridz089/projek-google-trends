@@ -26,6 +26,13 @@ Satu riset = 4 permintaan (satu per rentang waktu) + sampai 5 permintaan turunan
 - Urutan: Breakout dulu, lalu paling banyak rentang yang naik, lalu kenaikan terbesar. Yang hanya populer ditaruh paling akhir dan disembunyikan secara bawaan.
 - Turunan tingkat dua diambil dari keyword naik teratas (7 hari). Rentang atau turunan yang gagal dicatat di halaman tanpa menggagalkan seluruh riset.
 
+- **Skor peluang (0–100)**: aturan sederhana buatan kami untuk memprioritaskan keyword: pertumbuhan (maks 40), konsistensi lintas
+  rentang (25), sinyal dini (15), belum pernah tersimpan (10), memuat semua kata topik (10). Rinciannya muncul saat kursor diarahkan
+  ke skor. Ini bukan data Google dan bukan volume pencarian.
+- **Maksud pencarian**: tebakan dari kata di keyword (beli/harga, situs/aplikasi, informasi, kabar terbaru). Aturannya ada di
+  `app/insight.py` dan bisa meleset; pakai sebagai petunjuk.
+- **Kelompok**: keyword yang memakai kata pembeda sama (mis. "2026") dikumpulkan agar variasi tidak terbaca sebagai topik terpisah.
+- **Hari tersimpan**: berapa hari keyword itu pernah tersimpan di Daily Discovery (Google Trends tidak punya riwayat).
 - **Simpan ke Daily Discovery**: tombol di hasil riset menyimpan keyword yang tampil dan otomatis memasukkan topiknya ke Watchlist
   (hanya untuk satu negara, dan tidak untuk data contoh).
 - **Belum pernah tersimpan**: setelah ada riwayat Daily Discovery untuk topik itu, keyword yang belum pernah tersimpan di hari-hari
@@ -143,6 +150,7 @@ dan kerangka bab laporan PKL di [docs/kerangka-laporan.md](docs/kerangka-laporan
 - `app/explore.py`: sumber data Booming/Jelajah (`GoogleDirectProvider`, `SerpApiProvider`, `MockExploreProvider`,
   `ChainProvider`). Semua mengikuti antarmuka yang sama, jadi mengganti sumber tidak menyentuh API atau halaman.
 - `app/explore_service.py`: validasi masukan, cache, peringkat "booming" (`rank_booming`).
+- `app/insight.py`: skor peluang, maksud pencarian, dan pengelompokan keyword (aturan sederhana di atas data Google Trends).
 - `app/categories.py`: daftar kategori Google Trends dan rentang waktu.
 - `app/collector.py`, `app/db.py`, `app/cli.py`: tren harian dari RSS, penyimpanan, dan perintah terjadwal.
 - `app/main.py`: `/api/booming`, `/api/explore`, `/api/categories`, `/api/overview`, `/api/history`, `/api/top`,

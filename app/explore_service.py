@@ -11,7 +11,7 @@ import re
 import time
 from datetime import date
 
-from . import db
+from . import db, insight
 from .categories import CATEGORY_NAMES
 from .explore import GPROPS, PARTS, ExploreError, get_provider
 
@@ -372,7 +372,15 @@ def mark_history(result: dict, seen: set[str], days: int) -> dict:
 
     ``belum_pernah`` bernilai None bila belum ada riwayat sama sekali (tidak ada pembanding),
     jadi halaman tidak menampilkan "baru" secara menyesatkan pada hari pertama."""
+    counts = seen if isinstance(seen, dict) else {k: 1 for k in seen}
     result["history_days"] = days
     for r in result["items"]:
-        r["belum_pernah"] = (r["query"].strip().lower() not in seen) if days else None
+        n = counts.get(r["query"].strip().lower(), 0)
+        r["belum_pernah"] = (n == 0) if days else None
+        r["hari_tersimpan"] = n if days else None
     return result
+
+
+def finalize_research(result: dict, seen, days: int) -> dict:
+    """Pasang riwayat (``mark_history``) lalu analisis tambahan: maksud, skor peluang, kelompok."""
+    return insight.enrich(mark_history(result, seen, days))

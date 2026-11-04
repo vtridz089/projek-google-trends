@@ -481,6 +481,23 @@ def discovery_set_status(candidate_id: int, status: str) -> bool:
     return cur.rowcount > 0
 
 
+def discovery_history_counts(topic: str, geo: str, category: int, before_day: str) -> tuple[dict[str, int], int]:
+    """Seperti ``discovery_history`` tetapi per keyword: berapa hari berbeda ia pernah tersimpan."""
+    with closing(connect()) as conn:
+        rows = conn.execute("""
+            SELECT lower(c.keyword) AS k, COUNT(DISTINCT c.discovery_date) AS n
+            FROM keyword_candidates c JOIN topic_watchlist w ON w.id = c.topic_id
+            WHERE w.topic = ? AND w.geo = ? AND w.category = ? AND c.discovery_date < ?
+            GROUP BY lower(c.keyword)
+        """, (topic, geo, int(category), before_day)).fetchall()
+        days = conn.execute("""
+            SELECT COUNT(DISTINCT c.discovery_date) AS n
+            FROM keyword_candidates c JOIN topic_watchlist w ON w.id = c.topic_id
+            WHERE w.topic = ? AND w.geo = ? AND w.category = ? AND c.discovery_date < ?
+        """, (topic, geo, int(category), before_day)).fetchone()["n"]
+    return {r["k"]: r["n"] for r in rows}, days
+
+
 def discovery_history(topic: str, geo: str, category: int, before_day: str) -> tuple[set[str], int]:
     """Keyword (huruf kecil) yang sudah tersimpan untuk topik ini sebelum ``before_day``,
     dan berapa hari berbeda yang tercatat. (set(), 0) bila topik belum ada di Watchlist."""

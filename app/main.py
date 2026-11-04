@@ -250,10 +250,10 @@ def api_research(
         detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")
         raise HTTPException(502, detail) from exc
     if result.get("source") == "mock" or not result.get("geo"):
-        return explore_service.mark_history(result, set(), 0)
-    seen, days = db.discovery_history(result["topic"], result["geo"], result["category"],
-                                      today_local().isoformat())
-    return explore_service.mark_history(result, seen, days)
+        return explore_service.finalize_research(result, {}, 0)
+    counts, days = db.discovery_history_counts(result["topic"], result["geo"], result["category"],
+                                               today_local().isoformat())
+    return explore_service.finalize_research(result, counts, days)
 
 
 @app.post("/api/research/save")
@@ -287,10 +287,14 @@ async def api_research_save(request: Request):
         except (TypeError, ValueError):
             score = 0
         rising = bool(it.get("rising"))
+        try:
+            opp = max(0.0, min(100.0, float(it.get("opportunity"))))
+        except (TypeError, ValueError):
+            opp = None
         rows.append({"keyword": keyword, "source": "research",
                      "trend_category": "trending" if it.get("breakout") else ("emerging" if rising else "new_candidate"),
                      "interest_score": score if rising else None,
-                     "trend_change": str(it.get("label") or "")[:40], "opportunity_score": None})
+                     "trend_change": str(it.get("label") or "")[:40], "opportunity_score": opp})
     if not rows:
         raise HTTPException(400, "Tidak ada keyword yang valid untuk disimpan.")
     watch = db.watchlist_add(topic, geo, category)
