@@ -131,4 +131,5 @@ flowchart LR
 - **Kegagalan sebagian**: bila Autocomplete atau Trends gagal, hasil sisanya tetap tampil dengan catatan dan hanya di-cache 10 menit;
   bila semuanya gagal, API mengembalikan 502.
 - **Saluran tambahan** (opsional, `kanal=youtube,bing`): saran pencarian YouTube (`ds=yt`) dan Bing (`osjson.aspx`), masing-masing ±17 permintaan. Gagal satu saluran tidak membatalkan hasil.
+- **Turunan satu keyword** (`/api/keywords/turunan?q=cpns 2027`, dipanggil saat nama keyword diklik): Autocomplete dijalankan lagi dengan keyword itu sebagai seed (±17 permintaan, cache 6 jam), hanya saran yang memuat semua katanya yang dipakai. Hasil yang sudah ada di daftar ikut ditampilkan lebih dulu.
 - **Tidak tersedia**: volume pencarian, keyword difficulty, dan data Instagram/TikTok (tidak ada sumber gratis resmi).

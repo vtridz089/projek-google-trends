@@ -163,6 +163,60 @@ def normalize(seed, geo: str = "ID", depth: str = "cepat") -> tuple[str, str, st
     return params["topic"], params["geo"], depth
 
 
+def _expand_all(seed: str, geo: str, depth: str, channels: tuple[str, ...], demo: bool, suggester=None):
+    """Saran Google (+ saluran tambahan). Saluran yang gagal dicatat di ``errors`` tanpa menggagalkan yang lain."""
+    errors: list[dict] = []
+    notes: list[str] = []
+    sug = {"items": [], "requests": 0, "failed": 0, "source": ""}
+    try:
+        sug = (suggester or suggest.get_suggest(demo)).expand(seed, geo, depth)
+        notes += sug.get("notes", [])
+    except ExploreError as exc:
+        errors.append({"scope": "Saran Google (Autocomplete)", "error": str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")})
+    for ch in channels:  # saluran tambahan selalu "cepat" (±17 permintaan) agar tidak membebani
+        try:
+            extra = suggest.get_suggest(demo, ch).expand(seed, geo, "cepat")
+        except ExploreError as exc:
+            errors.append({"scope": SOURCE_LABELS[ch], "error": str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")})
+            continue
+        sug["items"] = sug["items"] + [{**it, "channel": ch} for it in extra["items"]]
+        sug["requests"] += extra.get("requests", 0)
+        sug["failed"] += extra.get("failed", 0)
+        notes += [n for n in extra.get("notes", []) if n not in notes]
+    return sug, errors, notes
+
+
+def run_children(query, geo: str = "ID", *, channels=(), demo: bool = False, refresh: bool = False,
+                 suggester=None, now: float | None = None, limit: int = 30) -> dict:
+    """Turunan satu keyword hasil riset (mis. "cpns 2027" -> "jadwal cpns 2027", "info cpns 2027"): saran pencarian
+    yang memuat semua kata keyword itu, lengkap dengan maksud, funnel, dan skor. Tanpa Trends (hemat permintaan)."""
+    query, geo, _ = normalize(query, geo, "cepat")
+    channels = normalize_channels(channels)
+    now = time.time() if now is None else now
+    params = {"kind": "keyword-turunan", "seed": query, "geo": geo}
+    if channels:
+        params["channels"] = list(channels)
+    key = None
+    if not demo:
+        key = explore_service._cache_key(params)
+        hit = db.cache_get(key)
+        if hit and not refresh:
+            ttl = PARTIAL_TTL_SECONDS if hit[0].get("partial") else _ttl_seconds()
+            if now - hit[1] < ttl:
+                return explore_service._decorate(hit[0], cached=True, stale=False, age=now - hit[1])
+    sug, errors, notes = _expand_all(query, geo, "cepat", channels, demo, suggester)
+    if not sug["items"] and errors:
+        raise ExploreError(errors[0]["error"])
+    items = build_rows(query, sug["items"], {})[:limit]
+    result = {"query": query, "geo": geo, "items": items, "total": len(items),
+              "requests": sug.get("requests", 0), "errors": errors, "notes": notes,
+              "partial": bool(errors) or bool(sug.get("failed")), "source": sug.get("source") or None,
+              "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now))}
+    if key is not None:
+        db.cache_put(key, params, result, now)
+    return explore_service._decorate(result, cached=False, stale=False)
+
+
 def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bool = True, demo: bool = False,
                  refresh: bool = False, suggester=None, provider=None, now: float | None = None,
                  channels=()) -> dict:
@@ -183,24 +237,7 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
             if now - hit[1] < ttl:
                 return explore_service._decorate(hit[0], cached=True, stale=False, age=now - hit[1])
 
-    errors: list[dict] = []
-    notes: list[str] = []
-    sug = {"items": [], "requests": 0, "failed": 0, "source": ""}
-    try:
-        sug = (suggester or suggest.get_suggest(demo)).expand(seed, geo, depth)
-        notes += sug.get("notes", [])
-    except ExploreError as exc:
-        errors.append({"scope": "Saran Google (Autocomplete)", "error": str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")})
-    for ch in channels:  # saluran tambahan selalu "cepat" (±17 permintaan) agar tidak membebani
-        try:
-            extra = suggest.get_suggest(demo, ch).expand(seed, geo, "cepat")
-        except ExploreError as exc:
-            errors.append({"scope": SOURCE_LABELS[ch], "error": str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")})
-            continue
-        sug["items"] = sug["items"] + [{**it, "channel": ch} for it in extra["items"]]
-        sug["requests"] += extra.get("requests", 0)
-        sug["failed"] += extra.get("failed", 0)
-        notes += [n for n in extra.get("notes", []) if n not in notes]
+    sug, errors, notes = _expand_all(seed, geo, depth, channels, demo, suggester)
 
     trends: dict[str, list[dict]] = {}
     trend_source = ""

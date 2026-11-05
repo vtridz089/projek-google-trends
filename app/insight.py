@@ -58,11 +58,19 @@ def _words(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower())
 
 
+# Kata navigasi yang lemah: "pendaftaran cpns 2027 kapan dibuka" sebenarnya mencari informasi, bukan sebuah situs.
+_WEAK_NAV = {"pendaftaran", "registrasi", "link", "akun"}
+
+
 def intent(keyword: str) -> str:
     """Tebak maksud pencarian dari kata-kata di keyword (aturan heuristik, bukan data Google)."""
     padded = " " + " ".join(_words(keyword)) + " "
+    rules = dict(_INTENT_RULES)
     for name, terms in _INTENT_RULES:
-        if any(f" {t} " in padded for t in terms):
+        hits = [t for t in terms if f" {t} " in padded]
+        if name == "navigasi" and hits and set(hits) <= _WEAK_NAV and any(f" {t} " in padded for t in rules["informasi"]):
+            continue  # kata tanya/info menang atas kata navigasi yang lemah
+        if hits:
             return name
     return "umum"
 

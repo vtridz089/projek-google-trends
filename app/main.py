@@ -267,6 +267,22 @@ def api_keywords(
         raise HTTPException(502, detail) from exc
 
 
+@app.get("/api/keywords/turunan")
+def api_keyword_children(q: str = "", geo: str = DEFAULT_GEO, kanal: str = "", demo: bool = False,
+                         refresh: bool = False):
+    """Turunan satu keyword (mis. "cpns 2027" -> "jadwal cpns 2027"): saran pencarian yang memuat keyword itu."""
+    try:
+        keyword_research.normalize(q, geo, "cepat")
+        channels = keyword_research.normalize_channels(kanal)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        return keyword_research.run_children(q, geo, channels=channels, demo=demo, refresh=refresh)
+    except ExploreError as exc:
+        log.warning("Turunan keyword gagal: %s", exc)
+        raise HTTPException(502, str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")) from exc
+
+
 @app.get("/api/research")
 def api_research(
     topic: str = "",

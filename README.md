@@ -13,7 +13,7 @@ Tiga halaman dihapus dari antarmuka (Tren hari ini, Daily Discovery, Booming per
 | Halaman | Alamat | Fungsi |
 |---|---|---|
 | **Riset topik** | `/riset` | Ketik satu topik, dapatkan satu daftar keyword yang naik di **24 jam, 7 hari, 30 hari, dan 90 hari** sekaligus, ditandai *Baru naik* / *Naik konsisten*, plus turunan dari keyword teratas. Menggantikan riset manual di trends.google.com. Bisa disaring dan diunduh sebagai CSV. |
-| **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik 7 hari, naik 90 hari, permintaan relatif). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
+| **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik 7 hari, naik 90 hari, permintaan relatif). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. **Klik nama keyword** (mis. "cpns 2027") untuk melihat turunannya ("kapan cpns 2027 dibuka", "info cpns 2027", "jadwal cpns 2027", ...) dari saran pencarian, lengkap dengan maksud dan skor. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
 | **Jelajah keyword** | `/explore` | Bandingkan hingga 5 keyword: grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah. |
 
 ### Cara kerja "Riset topik"
@@ -189,7 +189,7 @@ dan kerangka bab laporan PKL di [docs/kerangka-laporan.md](docs/kerangka-laporan
 - `app/insight.py`: skor peluang, maksud pencarian, dan pengelompokan keyword (aturan sederhana di atas data Google Trends).
 - `app/categories.py`: daftar kategori Google Trends dan rentang waktu.
 - `app/collector.py`, `app/db.py`, `app/cli.py`: tren harian dari RSS, penyimpanan, dan perintah terjadwal.
-- `app/main.py`: `/api/keywords` (`kanal=youtube,bing` opsional), `/api/booming`, `/api/explore`, `/api/categories`, `/api/overview`, `/api/history`, `/api/top`,
+- `app/main.py`: `/api/keywords` (`kanal=youtube,bing` opsional), `/api/keywords/turunan` (turunan satu keyword), `/api/booming`, `/api/explore`, `/api/categories`, `/api/overview`, `/api/history`, `/api/top`,
   `/api/export.csv`, `/api/collect`, `/api/demo-seed`, `/api/health`.
 
 ## Keterbatasan yang perlu dicatat di laporan

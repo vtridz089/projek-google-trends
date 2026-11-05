@@ -295,7 +295,8 @@ def test_two_suggest_channels_alone_count_as_multisource():
     assert r["bagian"]["multisumber"] == 10 and kr.score(row("bumn a b c", src=("saran",)), set())["bagian"]["multisumber"] == 0
 
 
-def test_channels_change_cache_key_only_when_used():
+def test_channels_change_cache_key_only_when_used(monkeypatch):
+    monkeypatch.setattr(suggest, "get_suggest", lambda demo=False, channel="google": Sug())  # jangan menyentuh jaringan
     sug = Sug()
     kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends(), now=1000, demo=False, channels=())
     assert kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends(), now=1001)["cached"] is True
@@ -305,3 +306,48 @@ def test_channels_change_cache_key_only_when_used():
 def test_demo_with_channels_marks_mock():
     out = kr.run_keywords("cpns", "ID", "cepat", demo=True, now=1, channels="youtube,bing")
     assert out["sumber"]["saran"] == "mock" and any("youtube" in r["sumber"] for r in out["items"])
+
+
+# --------------------------------------------------------------------------- turunan satu keyword
+
+
+@pytest.mark.parametrize("kw, intent", [
+    ("pendaftaran cpns 2027 kapan dibuka", "informasional"), ("kapan cpns 2027 dibuka", "informasional"),
+    ("info cpns 2027", "lainnya"), ("jadwal cpns 2027", "informasional"),
+    ("pendaftaran cpns 2027", "navigasi"), ("link akun sscasn", "navigasi")])
+def test_intent_for_children_examples(kw, intent):
+    assert insight.intent5(kw) == intent
+
+
+class KidSug:
+    def __init__(self): self.calls = 0
+    def expand(self, seed, geo="ID", depth="cepat"):
+        self.calls += 1
+        raw = [(seed, "seed", [f"kapan {seed} dibuka", f"info {seed}", f"jadwal {seed}", "cpns 2026", seed, f"{seed} apa"])]
+        return {"items": suggest._collect(seed, raw), "requests": 17, "failed": 0, "notes": [], "source": "google"}
+
+
+def test_run_children_returns_only_phrase_matches_and_caches():
+    sug = KidSug()
+    out = kr.run_children("cpns 2027", "ID", suggester=sug, now=1000)
+    assert {r["query"] for r in out["items"]} == {"kapan cpns 2027 dibuka", "info cpns 2027", "jadwal cpns 2027", "cpns 2027 apa"}
+    assert all(r["rank"] and r["maksud_label"] for r in out["items"]) and out["query"] == "cpns 2027" and not out["partial"]
+    assert kr.run_children("cpns 2027", "ID", suggester=sug, now=1100)["cached"] is True and sug.calls == 1
+    assert kr.run_children("cpns 2027", "ID", suggester=sug, now=1200, refresh=True)["cached"] is False
+
+
+def test_run_children_failure_and_limit():
+    class Bad:
+        def expand(self, *a, **k): raise ExploreError("429", hint="tunggu")
+    with pytest.raises(ExploreError, match="429"):
+        kr.run_children("cpns 2027", "ID", suggester=Bad(), now=1)
+    assert len(kr.run_children("cpns", "ID", demo=True, now=1, limit=5)["items"]) == 5
+    with pytest.raises(ValueError):
+        kr.run_children("a, b", "ID", demo=True)
+
+
+def test_api_children(client):
+    r = client.get("/api/keywords/turunan", params={"q": "cpns 2027", "demo": "true"})
+    assert r.status_code == 200 and r.json()["items"] and all("cpns" in i["query"] for i in r.json()["items"])
+    assert client.get("/api/keywords/turunan").status_code == 400
+    assert client.get("/api/keywords/turunan", params={"q": "x", "kanal": "tiktok"}).status_code == 400
