@@ -444,29 +444,14 @@ def research_page():
     return FileResponse(STATIC_DIR / "research.html")
 
 
-@app.get("/discovery")
-def discovery_page():
-    return FileResponse(STATIC_DIR / "discovery.html")
-
-
 @app.get("/explore")
 def explore_page():
     return FileResponse(STATIC_DIR / "explore.html")
 
 
-@app.get("/hari-ini")
-def today_page():
-    return FileResponse(STATIC_DIR / "index.html")
-
-
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "keyword.html")
-
-
-@app.get("/booming")
-def booming_page():
-    return FileResponse(STATIC_DIR / "booming.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

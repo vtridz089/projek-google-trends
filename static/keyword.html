@@ -11,11 +11,8 @@
   <nav class="tabs" aria-label="Halaman">
     <a href="/" aria-current="page">Keyword research</a>
     <a href="/riset">Riset topik</a>
-    <a href="/booming">Booming per topik</a>
-    <a href="/hari-ini">Tren hari ini</a>
     <a href="/explore">Jelajah keyword</a>
-    <a href="/discovery">Daily Discovery</a>
-  </nav>
+    </nav>
 
   <header>
     <div>
@@ -82,7 +79,6 @@
         </div>
         <div class="actions">
           <button type="button" id="copyall" title="Salin keyword yang sedang tampil, satu per baris">Salin semua</button>
-          <button type="button" id="save" title="Simpan keyword yang tampil (maks 200) ke Daily Discovery dan pantau seed ini setiap hari">Simpan ke Daily Discovery</button>
           <button type="button" id="csv">Unduh CSV</button>
         </div>
       </div>
@@ -300,9 +296,6 @@ function render(d) {
     ["Pertanyaan", s.pertanyaan, "cocok untuk FAQ dan artikel"], ["Long-tail", s.longtail, "4 kata atau lebih"],
   ].map(([l, v, sub]) => el("div", { class: "tile" }, [el("div", { class: "tl", text: l }), el("div", { class: "tv", text: String(v) }), el("div", { class: "ts", text: sub })])));
   $("title").textContent = "Keyword untuk “" + d.seed + "”";
-  $("save").disabled = mock || !d.geo;
-  $("save").title = mock ? "Data contoh tidak bisa disimpan" : !d.geo ? "Pilih satu negara (bukan seluruh dunia) untuk menyimpan"
-    : "Simpan keyword yang tampil (maks 200) ke Daily Discovery dan pantau seed ini setiap hari";
   renderChips(); renderList();
 }
 
@@ -361,25 +354,10 @@ async function copyAll() {
   const rows = visibleRows(); if (!rows.length) return;
   flash($("copyall"), await copyText(rows.map(r => r.query).join("\n")), rows.length + " keyword disalin");
 }
-async function saveToDiscovery() {
-  const d = state.data, all = visibleRows(); if (!d || !all.length) return;
-  const rows = all.slice(0, 200), btn = $("save"); btn.disabled = true;
-  try {
-    const body = await api("/api/research/save", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: d.seed, geo: d.geo, category: 0, source: "google", items: rows.map(r => {
-        const g = r.naik_7h || r.naik_90h;
-        return { keyword: r.query, rising: !!g, breakout: !!(g && g.breakout), score: g ? g.value : 0, opportunity: r.skor, label: g ? (g.breakout ? "Breakout" : g.label) : "" };
-      }) }) });
-    showMsg(body.saved + " keyword disimpan" + (all.length > 200 ? " (200 teratas dari " + all.length + ")" : "") +
-            ". Seed “" + body.topic + "” ikut dipantau di Daily Discovery.", "ok");
-  } catch (err) { showMsg(err.message, "err"); }
-  finally { btn.disabled = false; }
-}
 
 $("form").addEventListener("submit", (e) => { e.preventDefault(); search(); });
 $("copyall").addEventListener("click", copyAll);
 $("csv").addEventListener("click", downloadCsv);
-$("save").addEventListener("click", saveToDiscovery);
 $("more").addEventListener("click", () => { state.shown += PAGE; renderList(); });
 $("f-text").addEventListener("input", (e) => { state.text = e.target.value; resetPaging(); });
 $("f-intent").addEventListener("change", (e) => { state.intent = e.target.value; resetPaging(); });

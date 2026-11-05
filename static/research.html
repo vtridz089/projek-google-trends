@@ -11,11 +11,8 @@
   <nav class="tabs" aria-label="Halaman">
     <a href="/">Keyword research</a>
     <a href="/riset" aria-current="page">Riset topik</a>
-    <a href="/booming">Booming per topik</a>
-    <a href="/hari-ini">Tren hari ini</a>
     <a href="/explore">Jelajah keyword</a>
-    <a href="/discovery">Daily Discovery</a>
-  </nav>
+    </nav>
 
   <header>
     <div>
@@ -78,7 +75,6 @@
         </div>
         <div class="actions">
           <button type="button" id="copyall" title="Salin keyword yang sedang tampil, satu per baris">Salin semua</button>
-          <button type="button" id="save" title="Simpan keyword yang tampil ke Daily Discovery dan pantau topik ini setiap hari">Simpan ke Daily Discovery</button>
           <button type="button" id="csv">Unduh CSV</button>
         </div>
       </div>
@@ -270,19 +266,9 @@ function render(d) {
   meta.append(el("span", { text: optionText("geo", d.geo) + " · " + d.rising_total + " keyword naik · " + d.expanded + " ditelusuri turunannya" }));
   const notes = [...(d.notes || [])];
   if (d.stale) notes.push("Sebagian data berasal dari cache lama karena sumber sedang gagal.");
-  if (d.source !== "mock" && d.geo) {
-    notes.push(d.history_days > 0
-      ? "Dibandingkan dengan " + d.history_days + " hari riwayat Daily Discovery untuk topik ini."
-      : "Belum ada riwayat tersimpan untuk topik ini. Klik “Simpan ke Daily Discovery” hari ini agar besok bisa terlihat keyword yang benar-benar baru.");
-  }
   for (const e of d.errors || []) notes.push("Gagal mengambil " + e.scope + ": " + e.error);
   $("notes").hidden = !notes.length;
   $("notelist").replaceChildren(...notes.map(n => el("li", { text: n })));
-  const sv = $("save");
-  sv.disabled = d.source === "mock" || !d.geo;
-  sv.title = d.source === "mock" ? "Data contoh tidak bisa disimpan"
-           : !d.geo ? "Pilih satu negara (bukan seluruh dunia) untuk menyimpan"
-           : "Simpan keyword yang tampil ke Daily Discovery dan pantau topik ini setiap hari";
   renderFilters(); renderList();
 }
 
@@ -305,23 +291,6 @@ async function research() {
   }
 }
 
-async function saveToDiscovery() {
-  const d = state.data; const rows = visibleRows(); if (!d || !rows.length) return;
-  const btn = $("save"); btn.disabled = true;
-  try {
-    const res = await fetch("/api/research/save", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: d.topic, geo: d.geo, category: d.category, source: d.source,
-        items: rows.map(r => ({ keyword: r.query, rising: r.rising_count > 0, breakout: r.breakout,
-                                score: r.max_value, opportunity: r.peluang.skor, label: r.breakout ? "Breakout" : (r.rising_count ? "+" + r.max_value + "%" : "") })) }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Gagal menyimpan (" + res.status + ")");
-    showMsg(body.saved + " keyword disimpan. Topik “" + body.topic + "” ikut dipantau di Daily Discovery.", "ok");
-  } catch (err) {
-    showMsg(err.message, "err");
-  } finally {
-    btn.disabled = d.source === "mock" || !d.geo;
-  }
-}
 function downloadCsv() {
   const d = state.data; if (!d) return;
   const head = ["Keyword", "Pola", "Skor peluang", "Maksud pencarian", "Kelompok", "Hari tersimpan", "Turunan langsung", ...WIN.map(w => w[1] + " (%)"), "Turunan yang naik (7 hari)", "Topik", "Wilayah"];
@@ -342,7 +311,6 @@ async function copyAll() {
 
 $("form").addEventListener("submit", (e) => { e.preventDefault(); research(); });
 $("csv").addEventListener("click", downloadCsv);
-$("save").addEventListener("click", saveToDiscovery);
 $("sort").addEventListener("change", e => { state.sort = e.target.value; renderList(); });
 $("intent").addEventListener("change", e => { state.intent = e.target.value; renderList(); });
 for (const v of ["daftar", "kelompok"]) $("v-" + v).addEventListener("click", () => {

@@ -8,12 +8,12 @@ FastAPI + SQLite + halaman web biasa (Chart.js hanya di halaman Jelajah).
 
 ## Halaman
 
+Tiga halaman dihapus dari antarmuka (Tren hari ini, Daily Discovery, Booming per topik). API `/api/booming`, `/api/research/save`, perintah `discover`/`collect`, dan workflow GitHub Actions tetap ada dan bisa dipakai tanpa halaman.
+
 | Halaman | Alamat | Fungsi |
 |---|---|---|
 | **Riset topik** | `/riset` | Ketik satu topik, dapatkan satu daftar keyword yang naik di **24 jam, 7 hari, 30 hari, dan 90 hari** sekaligus, ditandai *Baru naik* / *Naik konsisten*, plus turunan dari keyword teratas. Menggantikan riset manual di trends.google.com. Bisa disaring dan diunduh sebagai CSV. |
 | **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik 7 hari, naik 90 hari, permintaan relatif). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
-| **Booming per topik** | `/booming` | Ketik topik, tampil **hanya pencarian yang benar-benar naik** (maks 10) dengan persen kenaikan dan skor peluang. Klik sebuah keyword untuk melihat turunannya yang juga naik. Filter periode (24 jam sampai 90 hari), wilayah, dan kategori. Bisa disalin dan diunduh sebagai CSV. |
-| **Tren hari ini** | `/hari-ini` | Daftar tren harian per negara dari feed RSS, dengan status baru/naik/turun dibanding kemarin. |
 | **Jelajah keyword** | `/explore` | Bandingkan hingga 5 keyword: grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah. |
 
 ### Cara kerja "Riset topik"

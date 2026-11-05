@@ -14,7 +14,7 @@ flowchart LR
     A -->|commit| F[data/snapshots.csv]
     F -->|impor saat start| D
     D --> API[FastAPI<br/>main.py]
-    API --> UI[Dashboard<br/>static/index.html]
+    API --> UI[Halaman<br/>static/keyword.html, research.html, explore.html]
     API -->|/api/export.csv| X[Unduhan CSV / Excel]
 ```
 
