@@ -500,5 +500,5 @@ def test_api_explore_error_becomes_502_with_hint(client, monkeypatch):
 
 
 def test_api_pages_and_recent(client):
-    assert client.get("/explore").status_code == 200
+    assert client.get("/explore").status_code == 404  # halaman dihapus, API tetap ada
     assert client.get("/api/explore/recent").json() == {"items": []}

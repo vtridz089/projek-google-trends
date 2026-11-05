@@ -8,13 +8,11 @@ FastAPI + SQLite + halaman web biasa (Chart.js hanya di halaman Jelajah).
 
 ## Halaman
 
-Tiga halaman dihapus dari antarmuka (Tren hari ini, Daily Discovery, Booming per topik). API `/api/booming`, `/api/research/save`, perintah `discover`/`collect`, dan workflow GitHub Actions tetap ada dan bisa dipakai tanpa halaman.
+Halaman lain (Tren hari ini, Daily Discovery, Booming per topik, Riset topik, Jelajah keyword) dihapus dari antarmuka; hanya Keyword research yang tersisa. API `/api/booming`, `/api/research`, `/api/explore`, `/api/research/save`, perintah `discover`/`collect`, dan workflow GitHub Actions tetap ada dan bisa dipakai tanpa halaman.
 
 | Halaman | Alamat | Fungsi |
 |---|---|---|
-| **Riset topik** | `/riset` | Ketik satu topik, dapatkan satu daftar keyword yang naik di **24 jam, 7 hari, 30 hari, dan 90 hari** sekaligus, ditandai *Baru naik* / *Naik konsisten*, plus turunan dari keyword teratas. Menggantikan riset manual di trends.google.com. Bisa disaring dan diunduh sebagai CSV. |
 | **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik 7 hari, naik 90 hari, permintaan relatif). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. **Klik nama keyword** (mis. "cpns 2027") untuk melihat turunannya ("kapan cpns 2027 dibuka", "info cpns 2027", "jadwal cpns 2027", ...) dari saran pencarian, lengkap dengan maksud dan skor. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
-| **Jelajah keyword** | `/explore` | Bandingkan hingga 5 keyword: grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah. |
 
 ### Cara kerja "Riset topik"
 

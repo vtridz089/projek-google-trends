@@ -455,16 +455,6 @@ def api_discovery_run(refresh: bool = False):
     return report
 
 
-@app.get("/riset")
-def research_page():
-    return FileResponse(STATIC_DIR / "research.html")
-
-
-@app.get("/explore")
-def explore_page():
-    return FileResponse(STATIC_DIR / "explore.html")
-
-
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "keyword.html")
