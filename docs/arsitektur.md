@@ -112,3 +112,22 @@ flowchart LR
 - **Jelajah**: hingga 5 keyword → grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah.
 - Tabel tambahan: `explore_cache(cache_key, params, payload, fetched_at)`; masa berlaku Booming 1 jam,
   Jelajah 6 jam (dapat diatur lewat variabel lingkungan).
+
+## 7. Keyword research (halaman utama `/`)
+
+```mermaid
+flowchart LR
+    U[Seed keyword] --> API["/api/keywords"]
+    API --> K[keyword_research<br/>cache 6 jam]
+    K --> A[suggest.py<br/>Google Autocomplete<br/>17 atau 43 permintaan]
+    K --> T[Google Trends<br/>rising 7 hari + 90 hari]
+    A --> M[Gabung per keyword<br/>+ intent, funnel, skor, kelompok]
+    T --> M
+    M --> R[Daftar, kelompok, funnel<br/>CSV, Daily Discovery]
+```
+
+- **Skor peluang** (heuristik transparan, bukan data Google): momentum 35 + permintaan 30 + long-tail 15 + relevan 10 + multisumber 10.
+- **Maksud dan funnel**: aturan kata kunci (`insight.intent5`); informasional = TOFU, komersial = MOFU, transaksional/navigasi = BOFU.
+- **Kegagalan sebagian**: bila Autocomplete atau Trends gagal, hasil sisanya tetap tampil dengan catatan dan hanya di-cache 10 menit;
+  bila semuanya gagal, API mengembalikan 502.
+- **Tidak tersedia**: volume pencarian, keyword difficulty, dan data Instagram/TikTok (tidak ada sumber gratis resmi).

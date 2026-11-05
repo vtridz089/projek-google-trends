@@ -16,11 +16,40 @@ _INTENT_RULES: list[tuple[str, tuple[str, ...]]] = [
                    "kredit", "sewa", "kode promo", "gratis ongkir", "daftar harga", "lowongan")),
     ("navigasi", ("login", "masuk akun", "website", "situs", "situs resmi", "portal", "aplikasi", "app",
                   "unduh", "download", "link", "pendaftaran", "registrasi", "akun")),
-    ("informasi", ("apa itu", "adalah", "cara", "syarat", "jadwal", "pengumuman", "hasil", "pengertian",
-                   "tutorial", "panduan", "sejarah", "berapa", "kapan", "siapa", "mengapa", "kenapa",
-                   "contoh", "daftar", "struktur", "visi misi", "gaji", "tugas", "fungsi")),
+    ("informasi", ("apa itu", "apa", "adalah", "cara", "bagaimana", "apakah", "syarat", "jadwal", "pengumuman",
+                   "hasil", "pengertian", "tutorial", "panduan", "sejarah", "berapa", "kapan", "siapa", "mengapa",
+                   "kenapa", "di mana", "dimana", "contoh", "daftar", "struktur", "visi misi", "gaji", "tugas",
+                   "fungsi")),
     ("berita", ("hari ini", "terbaru", "terkini", "berita", "update", "viral", "kasus", "demo", "live")),
 ]
+# Kata penanda maksud "komersial" (sedang membandingkan sebelum membeli). Dicek setelah transaksi.
+_COMMERCIAL = ("terbaik", "rekomendasi", "review", "ulasan", "vs", "versus", "perbandingan", "banding",
+               "alternatif", "top", "bagus", "worth it", "layak", "kelebihan", "kekurangan", "untung rugi")
+
+# Lima kelas intent + tahap funnel (TOFU = baru mencari tahu, MOFU = membandingkan, BOFU = siap bertindak).
+INTENT5 = {"informasional": "Informasional", "komersial": "Komersial", "transaksional": "Transaksional",
+           "navigasi": "Navigasi", "lainnya": "Lainnya"}
+FUNNEL = {"informasional": "TOFU", "komersial": "MOFU", "transaksional": "BOFU", "navigasi": "BOFU", "lainnya": None}
+CONTENT_FORMAT = {
+    "informasional": "Artikel panduan / FAQ",
+    "komersial": "Artikel perbandingan atau rekomendasi",
+    "transaksional": "Halaman produk / layanan atau landing page",
+    "navigasi": "Halaman brand atau panduan akses",
+    "lainnya": "Artikel pendukung umum",
+}
+
+
+def intent5(keyword: str) -> str:
+    """Intent dalam lima kelas. Aturan heuristik dari kata di keyword, bukan data Google."""
+    padded = " " + " ".join(_words(keyword)) + " "
+    base = intent(keyword)
+    if base == "transaksi":
+        return "transaksional"
+    if any(f" {t} " in padded for t in _COMMERCIAL):
+        return "komersial"
+    return {"navigasi": "navigasi", "informasi": "informasional", "berita": "informasional"}.get(base, "lainnya")
+
+
 INTENT_LABELS = {"transaksi": "Mau beli / daftar harga", "navigasi": "Cari situs / aplikasi",
                  "informasi": "Cari informasi", "berita": "Cari kabar terbaru", "umum": "Umum"}
 
@@ -106,7 +135,7 @@ def clusters(rows: list[dict], topic: str) -> list[dict]:
     out = []
     for key, members in groups.items():
         out.append({"nama": key or "Lainnya", "ukuran": len(members),
-                    "skor_terbaik": max(m["peluang"]["skor"] for m in members),
+                    "skor_terbaik": max((m.get("peluang") or {}).get("skor", 0) for m in members),
                     "keywords": [m["query"] for m in members]})
     out.sort(key=lambda g: (g["nama"] == "Lainnya", -g["skor_terbaik"], -g["ukuran"], g["nama"]))
     return out

@@ -342,9 +342,9 @@ def test_api_booming_validation_and_errors(client, monkeypatch):
 
 
 def test_api_pages_and_recent(client):
-    for path in ("/", "/hari-ini", "/explore"):
+    for path in ("/", "/booming", "/riset", "/hari-ini", "/explore"):
         assert client.get(path).status_code == 200
-    assert 'Lagi booming apa?' in client.get("/").text
+    assert 'Lagi booming apa?' in client.get("/booming").text
     assert client.get("/api/booming/recent").json() == {"items": []}
 
 

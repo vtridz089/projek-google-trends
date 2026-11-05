@@ -11,7 +11,8 @@ FastAPI + SQLite + halaman web biasa (Chart.js hanya di halaman Jelajah).
 | Halaman | Alamat | Fungsi |
 |---|---|---|
 | **Riset topik** | `/riset` | Ketik satu topik, dapatkan satu daftar keyword yang naik di **24 jam, 7 hari, 30 hari, dan 90 hari** sekaligus, ditandai *Baru naik* / *Naik konsisten*, plus turunan dari keyword teratas. Menggantikan riset manual di trends.google.com. Bisa disaring dan diunduh sebagai CSV. |
-| **Booming per topik** | `/` | Ketik topik, tampil **hanya pencarian yang benar-benar naik** (maks 10) dengan persen kenaikan dan skor peluang. Klik sebuah keyword untuk melihat turunannya yang juga naik. Filter periode (24 jam sampai 90 hari), wilayah, dan kategori. Bisa disalin dan diunduh sebagai CSV. |
+| **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"), digabung dengan data **Google Trends** (naik 7 hari, naik 90 hari, permintaan relatif). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
+| **Booming per topik** | `/booming` | Ketik topik, tampil **hanya pencarian yang benar-benar naik** (maks 10) dengan persen kenaikan dan skor peluang. Klik sebuah keyword untuk melihat turunannya yang juga naik. Filter periode (24 jam sampai 90 hari), wilayah, dan kategori. Bisa disalin dan diunduh sebagai CSV. |
 | **Tren hari ini** | `/hari-ini` | Daftar tren harian per negara dari feed RSS, dengan status baru/naik/turun dibanding kemarin. |
 | **Jelajah keyword** | `/explore` | Bandingkan hingga 5 keyword: grafik minat dari waktu ke waktu, query terkait, dan minat per wilayah. |
 
@@ -183,10 +184,12 @@ dan kerangka bab laporan PKL di [docs/kerangka-laporan.md](docs/kerangka-laporan
 - `app/explore.py`: sumber data Booming/Jelajah (`GoogleDirectProvider`, `SerpApiProvider`, `MockExploreProvider`,
   `ChainProvider`). Semua mengikuti antarmuka yang sama, jadi mengganti sumber tidak menyentuh API atau halaman.
 - `app/explore_service.py`: validasi masukan, cache, peringkat "booming" (`rank_booming`).
+- `app/suggest.py`: saran keyword dari Google Autocomplete (tidak resmi), dengan jeda dan penanda saat diblokir.
+- `app/keyword_research.py`: menggabungkan saran + Trends, skor peluang, kelompok, ringkasan, dan cache (6 jam; hasil sebagian 10 menit).
 - `app/insight.py`: skor peluang, maksud pencarian, dan pengelompokan keyword (aturan sederhana di atas data Google Trends).
 - `app/categories.py`: daftar kategori Google Trends dan rentang waktu.
 - `app/collector.py`, `app/db.py`, `app/cli.py`: tren harian dari RSS, penyimpanan, dan perintah terjadwal.
-- `app/main.py`: `/api/booming`, `/api/explore`, `/api/categories`, `/api/overview`, `/api/history`, `/api/top`,
+- `app/main.py`: `/api/keywords`, `/api/booming`, `/api/explore`, `/api/categories`, `/api/overview`, `/api/history`, `/api/top`,
   `/api/export.csv`, `/api/collect`, `/api/demo-seed`, `/api/health`.
 
 ## Keterbatasan yang perlu dicatat di laporan

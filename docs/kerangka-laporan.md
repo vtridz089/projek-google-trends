@@ -34,6 +34,7 @@ kampus/sekolah dan instansi Anda. Bagian bertanda **[ISI]** adalah hal yang hany
 - Pemantauan harian (`discover.yml`, `cmd_discover`): penyimpanan riwayat sebagai CSV di Git, aturan kegagalan (semua gagal = merah, sebagian = peringatan), dan penolakan cache lama.
 - Cara kerja "Riset topik" (`merge_research`, `run_research`): penggabungan 4 rentang waktu, pola baru/konsisten, dan turunan tingkat dua.
 - Cara kerja peringkat "booming" (`rank_booming`): Breakout, persentase kenaikan, dan pengisian dengan pencarian populer.
+- Keyword research (`suggest.py`, `keyword_research.py`): perluasan seed lewat Google Autocomplete, penggabungan dengan Trends, intent/funnel, rumus skor peluang, dan alasan volume serta keyword difficulty tidak disediakan. Bandingkan dengan platform komersial (mis. seo.chanelify.com).
 - Implementasi penanganan kegagalan (percobaan ulang, pesan error, job Actions merah).
 - **Pengujian:** hasil `python -m pytest`, uji manual tiap tombol dan filter, uji pengambilan data
   nyata. **[ISI]** tangkapan layar hasil tes dan dashboard.
@@ -44,7 +45,7 @@ kampus/sekolah dan instansi Anda. Bagian bertanda **[ISI]** adalah hal yang hany
 - Kesimpulan.
 - **Keterbatasan:** hanya 10–20 tren teratas dan tren saat ini; traffic perkiraan; sumber tidak resmi
   sehingga bisa berubah sewaktu-waktu; belum ada pemantauan keyword pilihan sendiri.
-- **Saran pengembangan:** sumber interest-over-time, notifikasi, ekspor Excel.
+- **Saran pengembangan:** volume dan keyword difficulty lewat API berbayar (mis. DataForSEO), sumber Instagram/TikTok, sumber interest-over-time, notifikasi, ekspor Excel.
 
 ## Lampiran
 - Kode sumber (tautan repositori GitHub).

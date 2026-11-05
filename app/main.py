@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import db, explore_service
+from . import db, explore_service, keyword_research
 from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
@@ -238,6 +238,31 @@ def api_booming(
         raise HTTPException(502, detail) from exc
 
 
+@app.get("/api/keywords")
+def api_keywords(
+    seed: str = "",
+    geo: str = DEFAULT_GEO,
+    depth: str = "cepat",
+    trends: bool = True,
+    demo: bool = False,
+    refresh: bool = False,
+):
+    """Riset keyword: satu seed menjadi puluhan sampai ratusan ide (saran Google + Google Trends) lengkap dengan
+    maksud pencarian, tahap funnel, tren, skor, dan kelompok topik. Tanpa volume pencarian/KD (tidak tersedia gratis).
+
+    depth=cepat memakai ±17 permintaan saran Google, depth=lengkap ±43. trends=false melewatkan Google Trends."""
+    try:
+        keyword_research.normalize(seed, geo, depth)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    try:
+        return keyword_research.run_keywords(seed, geo, depth, with_trends=trends, demo=demo, refresh=refresh)
+    except ExploreError as exc:
+        log.warning("Riset keyword gagal: %s", exc)
+        detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")
+        raise HTTPException(502, detail) from exc
+
+
 @app.get("/api/research")
 def api_research(
     topic: str = "",
@@ -432,6 +457,11 @@ def today_page():
 
 @app.get("/")
 def index():
+    return FileResponse(STATIC_DIR / "keyword.html")
+
+
+@app.get("/booming")
+def booming_page():
     return FileResponse(STATIC_DIR / "booming.html")
 
 
