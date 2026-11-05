@@ -50,6 +50,8 @@
     <div class="actions">
       <button class="primary" id="go" type="submit">Cari keyword</button>
       <label class="check"><input type="checkbox" id="trends" checked> Sertakan Google Trends (sedang naik)</label>
+      <label class="check"><input type="checkbox" id="k-youtube"> Saran YouTube</label>
+      <label class="check"><input type="checkbox" id="k-bing"> Saran Bing</label>
       <label class="check"><input type="checkbox" id="demo"> Pakai data contoh (tanpa Google)</label>
       <label class="check"><input type="checkbox" id="refresh"> Abaikan cache</label>
       <span class="status" id="status" role="status" aria-live="polite"></span>
@@ -133,7 +135,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const PAGE = 100;
-const SOURCE_LABEL = { saran: "Saran Google", naik: "Sedang naik", populer: "Populer di Trends" };
+const SOURCE_LABEL = { saran: "Saran Google", youtube: "Saran YouTube", bing: "Saran Bing", naik: "Sedang naik", populer: "Populer di Trends" };
 const TAHAP_INFO = {
   TOFU: ["TOFU · baru mencari tahu", "cocok untuk artikel panduan, FAQ, dan penjelasan"],
   MOFU: ["MOFU · sedang membandingkan", "cocok untuk artikel perbandingan, ulasan, dan rekomendasi"],
@@ -325,10 +327,12 @@ function renderRecent() {
 async function search() {
   const seed = $("seed").value.trim(); if (!seed) return;
   const p = new URLSearchParams({ seed, geo: $("geo").value, depth: $("depth").value, trends: $("trends").checked ? "true" : "false" });
+  const kanal = ["youtube", "bing"].filter(k => $("k-" + k).checked).join(",");
+  if (kanal) p.set("kanal", kanal);
   if ($("demo").checked) p.set("demo", "true");
   if ($("refresh").checked) p.set("refresh", "true");
   showMsg(""); $("go").disabled = true; document.body.classList.add("loading");
-  $("status").textContent = "Mengumpulkan saran Google" + ($("trends").checked ? " dan data Trends" : "") + "… " + ($("depth").value === "lengkap" ? "bisa 25 detik" : "sekitar 10 detik");
+  $("status").textContent = "Mengumpulkan saran pencarian" + ($("trends").checked ? " dan data Trends" : "") + "… " + ($("depth").value === "lengkap" ? "bisa 25 detik" : ($("k-youtube").checked || $("k-bing").checked ? "sekitar 20 detik" : "sekitar 10 detik"));
   try {
     render(await api("/api/keywords?" + p.toString()));
     $("status").textContent = "";

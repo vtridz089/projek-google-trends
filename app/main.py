@@ -246,17 +246,21 @@ def api_keywords(
     trends: bool = True,
     demo: bool = False,
     refresh: bool = False,
+    kanal: str = "",
 ):
     """Riset keyword: satu seed menjadi puluhan sampai ratusan ide (saran Google + Google Trends) lengkap dengan
     maksud pencarian, tahap funnel, tren, skor, dan kelompok topik. Tanpa volume pencarian/KD (tidak tersedia gratis).
 
-    depth=cepat memakai ±17 permintaan saran Google, depth=lengkap ±43. trends=false melewatkan Google Trends."""
+    depth=cepat memakai ±17 permintaan saran Google, depth=lengkap ±43. trends=false melewatkan Google Trends.
+    kanal=youtube,bing menambah saran dari YouTube dan/atau Bing (gratis, +±17 permintaan per saluran)."""
     try:
         keyword_research.normalize(seed, geo, depth)
+        channels = keyword_research.normalize_channels(kanal)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     try:
-        return keyword_research.run_keywords(seed, geo, depth, with_trends=trends, demo=demo, refresh=refresh)
+        return keyword_research.run_keywords(seed, geo, depth, with_trends=trends, demo=demo, refresh=refresh,
+                                             channels=channels)
     except ExploreError as exc:
         log.warning("Riset keyword gagal: %s", exc)
         detail = str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")

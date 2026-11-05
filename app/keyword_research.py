@@ -24,7 +24,10 @@ DEPTHS = ("cepat", "lengkap")
 WEIGHTS = {"momentum": 35, "permintaan": 30, "longtail": 15, "relevan": 10, "multisumber": 10}
 _QUESTION_START = {"apa", "apakah", "bagaimana", "cara", "kenapa", "mengapa", "kapan", "siapa", "dimana",
                    "berapa", "mana"}
-SOURCE_LABELS = {"saran": "Saran Google", "naik": "Sedang naik", "populer": "Populer di Trends"}
+SOURCE_LABELS = {"saran": "Saran Google", "youtube": "Saran YouTube", "bing": "Saran Bing", "naik": "Sedang naik",
+                 "populer": "Populer di Trends"}
+SUGGEST_SOURCES = {"saran", "youtube", "bing"}
+EXTRA_CHANNELS = ("youtube", "bing")
 
 
 def _ttl_seconds() -> float:
@@ -50,7 +53,7 @@ def score(row: dict, seed_words: set[str]) -> dict:
     - permintaan (maks 30): angka relatif Trends 0-100 bila ada; bila tidak, dari urutan di saran Google (1 = tertinggi).
     - longtail (maks 15): makin panjang makin spesifik (4 kata atau lebih = penuh); biasanya lebih mudah diperebutkan.
     - relevan (maks 10): memuat semua kata seed.
-    - multisumber (maks 10): muncul di saran Google DAN di data Trends.
+    - multisumber (maks 10): muncul di saran pencarian (Google/YouTube/Bing) DAN di data Trends, atau di dua saluran saran.
     """
     gains = [g for g in (row["naik_7h"], row["naik_90h"]) if g]
     if any(g["breakout"] for g in gains):
@@ -68,7 +71,8 @@ def score(row: dict, seed_words: set[str]) -> dict:
     n = len(_words(row["query"]))
     longtail = {1: 0, 2: 5, 3: 10}.get(n, WEIGHTS["longtail"])
     relevan = WEIGHTS["relevan"] if seed_words <= set(_words(row["query"])) else 0
-    multi = WEIGHTS["multisumber"] if "saran" in row["sumber"] and row["sumber"] & {"naik", "populer"} else 0
+    sug_n = len(row["sumber"] & SUGGEST_SOURCES)
+    multi = WEIGHTS["multisumber"] if sug_n and (row["sumber"] & {"naik", "populer"} or sug_n >= 2) else 0
     parts = {"momentum": round(momentum), "permintaan": round(demand), "longtail": longtail,
              "relevan": relevan, "multisumber": multi}
     total = min(100, sum(parts.values()))
@@ -93,7 +97,7 @@ def build_rows(seed: str, suggestions: list[dict], trends: dict[str, list[dict]]
         if s["query"].strip().lower() == seed_key:
             continue
         r = row_for(s["query"])
-        r["sumber"].add("saran")
+        r["sumber"].add(s.get("channel") or "saran")
         if r["ac_rank"] is None or s["rank"] < r["ac_rank"]:
             r["ac_rank"], r["via"] = s["rank"], s.get("via")
     for column, items in trends.items():
@@ -142,6 +146,16 @@ def summarize(items: list[dict]) -> dict:
     }
 
 
+def normalize_channels(channels) -> tuple[str, ...]:
+    """Saluran saran tambahan ("youtube", "bing"); string dipisah koma. Google selalu dipakai."""
+    if isinstance(channels, str):
+        channels = [c for c in re.split(r"[,\s]+", channels.lower()) if c]
+    bad = [c for c in channels or () if c not in EXTRA_CHANNELS]
+    if bad:
+        raise ValueError(f"Saluran tidak dikenal: {', '.join(bad)}. Pilihan: {', '.join(EXTRA_CHANNELS)}.")
+    return tuple(c for c in EXTRA_CHANNELS if c in (channels or ()))
+
+
 def normalize(seed, geo: str = "ID", depth: str = "cepat") -> tuple[str, str, str]:
     params = explore_service.normalize_booming(seed, geo, 0, "now 7-d", "", 20)  # validasi seed dan negara
     if depth not in DEPTHS:
@@ -150,12 +164,16 @@ def normalize(seed, geo: str = "ID", depth: str = "cepat") -> tuple[str, str, st
 
 
 def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bool = True, demo: bool = False,
-                 refresh: bool = False, suggester=None, provider=None, now: float | None = None) -> dict:
+                 refresh: bool = False, suggester=None, provider=None, now: float | None = None,
+                 channels=()) -> dict:
     """Riset keyword untuk satu seed. Sumber yang gagal dicatat di ``errors`` tanpa menggagalkan semuanya;
     hanya bila TIDAK ADA satu pun data, ExploreError dilempar."""
     seed, geo, depth = normalize(seed, geo, depth)
+    channels = normalize_channels(channels)
     now = time.time() if now is None else now
     params = {"kind": "keyword", "seed": seed, "geo": geo, "depth": depth, "trends": bool(with_trends)}
+    if channels:  # hanya bila dipakai, agar kunci cache lama tidak berubah
+        params["channels"] = list(channels)
     key = None
     if not demo:
         key = explore_service._cache_key(params)
@@ -173,6 +191,16 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
         notes += sug.get("notes", [])
     except ExploreError as exc:
         errors.append({"scope": "Saran Google (Autocomplete)", "error": str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")})
+    for ch in channels:  # saluran tambahan selalu "cepat" (±17 permintaan) agar tidak membebani
+        try:
+            extra = suggest.get_suggest(demo, ch).expand(seed, geo, "cepat")
+        except ExploreError as exc:
+            errors.append({"scope": SOURCE_LABELS[ch], "error": str(exc) + (f" Saran: {exc.hint}" if exc.hint else "")})
+            continue
+        sug["items"] = sug["items"] + [{**it, "channel": ch} for it in extra["items"]]
+        sug["requests"] += extra.get("requests", 0)
+        sug["failed"] += extra.get("failed", 0)
+        notes += [n for n in extra.get("notes", []) if n not in notes]
 
     trends: dict[str, list[dict]] = {}
     trend_source = ""
@@ -206,6 +234,7 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
         "seed": seed, "geo": geo, "depth": depth, "category": 0, "with_trends": bool(with_trends),
         "items": items, "kelompok": groups, "ringkasan": summarize(items),
         "sumber": {"saran": sug.get("source") or None, "trends": trend_source or None},
+        "kanal": list(channels),
         "requests": {"saran": sug.get("requests", 0), "saran_gagal": sug.get("failed", 0),
                      "trends": len(trends)},
         "errors": errors, "notes": notes, "partial": bool(errors) or bool(sug.get("failed")),

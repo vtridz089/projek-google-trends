@@ -24,6 +24,10 @@ from .explore import ExploreError
 log = logging.getLogger("trendwatch.suggest")
 
 SUGGEST_URL = "https://suggestqueries.google.com/complete/search"
+BING_URL = "https://api.bing.com/osjson.aspx"
+# Saluran saran: semuanya endpoint publik tanpa kunci (tidak resmi). "google" = web, "youtube" = pencarian video,
+# "bing" = mesin pencari Microsoft. Nama label tampilan ada di keyword_research.SOURCE_LABELS.
+CHANNELS = ("google", "youtube", "bing")
 QUESTION_PREFIXES = ["apa itu", "cara", "kenapa", "bagaimana", "berapa", "kapan", "di mana", "siapa"]
 MODIFIERS = ["terbaik", "harga", "review", "vs", "alternatif", "gratis", "online", "terbaru"]
 LETTERS = list("abcdefghijklmnopqrstuvwxyz")
@@ -74,10 +78,16 @@ def _collect(seed: str, raw: list[tuple[str, str, list[str]]]) -> list[dict]:
     return items
 
 
+_CHANNEL_NAMES = {"google": "Google Autocomplete", "youtube": "YouTube (saran pencarian)", "bing": "Bing (saran pencarian)"}
+
+
 class GoogleSuggest:
     name = "google"
 
-    def __init__(self, min_interval: float = 0.25, workers: int = 4, timeout: float = 8.0):
+    def __init__(self, min_interval: float = 0.25, workers: int = 4, timeout: float = 8.0, channel: str = "google"):
+        if channel not in CHANNELS:
+            raise ValueError(f"Saluran saran tidak dikenal: {channel}")
+        self.channel, self.label = channel, _CHANNEL_NAMES[channel]
         self.min_interval, self.workers, self.timeout = min_interval, workers, timeout
         self._lock, self._last, self._blocked = threading.Lock(), 0.0, False
 
@@ -90,10 +100,18 @@ class GoogleSuggest:
 
     def fetch(self, text: str, geo: str) -> list[str]:
         self._wait()
-        params = {"client": "firefox", "q": text, "hl": _LANG.get(geo.upper(), "en")}
-        if geo:
-            params["gl"] = geo.lower()
-        req = urllib.request.Request(f"{SUGGEST_URL}?{urllib.parse.urlencode(params)}", headers={
+        lang = _LANG.get(geo.upper(), "en")
+        if self.channel == "bing":
+            url = BING_URL
+            params = {"query": text, "mkt": f"{lang}-{geo.upper()}" if geo else "en-US"}
+        else:
+            url = SUGGEST_URL
+            params = {"client": "firefox", "q": text, "hl": lang}
+            if geo:
+                params["gl"] = geo.lower()
+            if self.channel == "youtube":
+                params["ds"] = "yt"
+        req = urllib.request.Request(f"{url}?{urllib.parse.urlencode(params)}", headers={
             "User-Agent": "Mozilla/5.0 (compatible; TrendWatch/1.0)", "Accept": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
@@ -101,13 +119,13 @@ class GoogleSuggest:
         except urllib.error.HTTPError as exc:
             if exc.code in (429, 403, 503):
                 self._blocked = True  # berhenti; terus menembak hanya memperburuk pembatasan
-            raise ExploreError(f"Google Autocomplete menolak permintaan (HTTP {exc.code}).",
-                               hint="Tunggu beberapa menit, atau matikan saran Google dan pakai data Trends saja.") from exc
+            raise ExploreError(f"{self.label} menolak permintaan (HTTP {exc.code}).",
+                               hint="Tunggu beberapa menit, atau matikan saluran ini dan pakai sumber lain.") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise ExploreError(f"Gagal menghubungi Google Autocomplete: {getattr(exc, 'reason', exc)}",
+            raise ExploreError(f"Gagal menghubungi {self.label}: {getattr(exc, 'reason', exc)}",
                                hint="Periksa koneksi internet, lalu coba lagi.") from exc
         except ValueError as exc:
-            raise ExploreError(f"Balasan Google Autocomplete tidak dikenali ({exc}).",
+            raise ExploreError(f"Balasan {self.label} tidak dikenali ({exc}).",
                                hint="Format endpoint tidak resmi ini mungkin berubah.") from exc
 
     def expand(self, seed: str, geo: str = "ID", depth: str = "cepat") -> dict:
@@ -129,12 +147,12 @@ class GoogleSuggest:
             list(pool.map(work, range(len(todo))))
         ok = [r for r in results if r is not None]
         if not ok:
-            raise errors[0] if errors else ExploreError("Google Autocomplete tidak mengembalikan apa pun.")
+            raise errors[0] if errors else ExploreError(f"{self.label} tidak mengembalikan apa pun.")
         notes = []
         if errors:
-            notes.append(f"{len(errors)} dari {len(todo)} permintaan saran Google gagal; hasil saran mungkin tidak lengkap.")
+            notes.append(f"{len(errors)} dari {len(todo)} permintaan {self.label} gagal; hasil saran mungkin tidak lengkap.")
         return {"items": _collect(seed, ok), "requests": len(todo), "failed": len(errors), "notes": notes,
-                "source": self.name}
+                "source": self.name, "channel": self.channel}
 
 
 class MockSuggest:
@@ -142,8 +160,11 @@ class MockSuggest:
 
     name = "mock"
 
+    def __init__(self, channel: str = "google"):
+        self.channel = channel
+
     def expand(self, seed: str, geo: str = "ID", depth: str = "cepat") -> dict:
-        rng = random.Random(f"{seed.lower()}|{depth}")
+        rng = random.Random(f"{seed.lower()}|{depth}" + ("" if self.channel == "google" else f"|{self.channel}"))
         raw = []
         for text, via in variants(seed, depth):
             tails = ["2026", "terbaru", "adalah", "hari ini", "indonesia", "untuk pemula", "terbaik", "gratis"]
@@ -151,8 +172,9 @@ class MockSuggest:
             base = text if text != seed else seed
             raw.append((text, via, [f"{base} {t}" for t in tails[:3]] + [base]))
         return {"items": _collect(seed, raw), "requests": len(raw), "failed": 0,
-                "notes": ["Saran contoh: dibuat otomatis, bukan dari Google."], "source": self.name}
+                "notes": ["Saran contoh: dibuat otomatis, bukan dari Google."], "source": self.name,
+                "channel": self.channel}
 
 
-def get_suggest(demo: bool = False):
-    return MockSuggest() if demo else GoogleSuggest()
+def get_suggest(demo: bool = False, channel: str = "google"):
+    return MockSuggest(channel) if demo else GoogleSuggest(channel=channel)

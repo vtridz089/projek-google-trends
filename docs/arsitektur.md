@@ -130,4 +130,5 @@ flowchart LR
 - **Maksud dan funnel**: aturan kata kunci (`insight.intent5`); informasional = TOFU, komersial = MOFU, transaksional/navigasi = BOFU.
 - **Kegagalan sebagian**: bila Autocomplete atau Trends gagal, hasil sisanya tetap tampil dengan catatan dan hanya di-cache 10 menit;
   bila semuanya gagal, API mengembalikan 502.
+- **Saluran tambahan** (opsional, `kanal=youtube,bing`): saran pencarian YouTube (`ds=yt`) dan Bing (`osjson.aspx`), masing-masing ±17 permintaan. Gagal satu saluran tidak membatalkan hasil.
 - **Tidak tersedia**: volume pencarian, keyword difficulty, dan data Instagram/TikTok (tidak ada sumber gratis resmi).

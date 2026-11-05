@@ -242,3 +242,66 @@ def test_api_keywords_demo_and_validation(client):
     assert client.get("/api/keywords", params={"seed": "a, b"}).status_code == 400
     assert client.get("/api/keywords", params={"seed": "a", "depth": "dalam"}).status_code == 400
     assert "Keyword research" in client.get("/").text and client.get("/booming").status_code == 200
+
+
+# --------------------------------------------------------------------------- saluran tambahan (YouTube, Bing)
+
+
+def test_channel_urls_and_validation(monkeypatch):
+    seen = []
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b'["x", ["x a"]]'
+
+    monkeypatch.setattr(suggest.urllib.request, "urlopen", lambda req, timeout=0: (seen.append(req.full_url), Resp())[1])
+    for ch in suggest.CHANNELS:
+        assert suggest.GoogleSuggest(min_interval=0, channel=ch).fetch("x", "ID") == ["x a"]
+    g, yt, bing = seen
+    assert "suggestqueries.google.com" in g and "ds=yt" not in g
+    assert "suggestqueries.google.com" in yt and "ds=yt" in yt
+    assert "api.bing.com/osjson.aspx" in bing and "mkt=id-ID" in bing
+    with pytest.raises(ValueError):
+        suggest.GoogleSuggest(channel="tiktok")
+
+
+def test_normalize_channels():
+    assert kr.normalize_channels("bing, YouTube") == ("youtube", "bing") and kr.normalize_channels("") == ()
+    assert kr.normalize_channels(["bing"]) == ("bing",)
+    with pytest.raises(ValueError, match="tiktok"):
+        kr.normalize_channels("youtube,tiktok")
+
+
+def test_extra_channels_merge_sources_and_tolerate_failure(monkeypatch):
+    class Ch:
+        def __init__(self, ch): self.ch = ch
+        def expand(self, seed, geo="ID", depth="cepat"):
+            if self.ch == "bing":
+                raise ExploreError("Bing (saran pencarian) menolak permintaan (HTTP 429).")
+            return {"items": [{"query": "bumn 2026", "rank": 2, "via": "seed"}, {"query": "bumn tutorial video", "rank": 1, "via": "seed"}],
+                    "requests": 17, "failed": 0, "notes": [], "source": "google", "channel": "youtube"}
+    monkeypatch.setattr(suggest, "get_suggest", lambda demo=False, channel="google": Ch(channel))
+    out = kr.run_keywords("bumn", "ID", "cepat", suggester=Sug(), provider=Trends(), now=1, channels="youtube,bing")
+    by = {r["query"]: r for r in out["items"]}
+    assert by["bumn 2026"]["sumber"] == ["saran", "youtube", "populer"] and by["bumn 2026"]["skor_bagian"]["multisumber"] == 10
+    assert by["bumn tutorial video"]["sumber"] == ["youtube"]
+    assert out["kanal"] == ["youtube", "bing"] and out["partial"] and any(e["scope"] == "Saran Bing" for e in out["errors"])
+    assert out["requests"]["saran"] == 34
+
+
+def test_two_suggest_channels_alone_count_as_multisource():
+    r = kr.score(row("bumn a b c", src=("saran", "youtube")), set())
+    assert r["bagian"]["multisumber"] == 10 and kr.score(row("bumn a b c", src=("saran",)), set())["bagian"]["multisumber"] == 0
+
+
+def test_channels_change_cache_key_only_when_used():
+    sug = Sug()
+    kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends(), now=1000, demo=False, channels=())
+    assert kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends(), now=1001)["cached"] is True
+    assert kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends(), now=1002, channels="youtube", )["cached"] is False
+
+
+def test_demo_with_channels_marks_mock():
+    out = kr.run_keywords("cpns", "ID", "cepat", demo=True, now=1, channels="youtube,bing")
+    assert out["sumber"]["saran"] == "mock" and any("youtube" in r["sumber"] for r in out["items"])
