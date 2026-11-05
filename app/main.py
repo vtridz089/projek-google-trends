@@ -13,12 +13,14 @@ import time
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from . import db, explore_service, keyword_research
+from . import auth, db, explore_service, keyword_research
 from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
@@ -61,27 +63,91 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="TrendWatch", lifespan=lifespan)
 
 
-@app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    """Login sederhana (HTTP Basic), aktif hanya jika TRENDWATCH_PASSWORD diisi.
-    Dipakai saat dashboard dipublikasikan. Kata sandi dikirim tanpa enkripsi
-    kecuali lewat HTTPS, jadi pakai hosting yang menyediakan HTTPS."""
-    password = os.environ.get("TRENDWATCH_PASSWORD")
-    if not password or request.url.path == "/api/health":
-        return await call_next(request)
+_throttle = auth.Throttle()
+_PUBLIC_PATHS = {"/api/health", "/login", "/api/login", "/static/style.css"}
 
-    username = os.environ.get("TRENDWATCH_USER", "admin")
+
+class LoginBody(BaseModel):
+    username: str = ""
+    password: str = ""
+    next: str = "/"
+
+
+def _basic_ok(request: Request) -> bool:
+    """Klien non-browser (curl, skrip) boleh memakai HTTP Basic dengan akun yang sama."""
     header = request.headers.get("authorization", "")
-    if header[:6].lower() == "basic ":
-        try:
-            user, _, pwd = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-            if secrets.compare_digest(user.encode(), username.encode()) and \
-               secrets.compare_digest(pwd.encode(), password.encode()):
-                return await call_next(request)
-        except Exception:
-            pass
-    return Response("Autentikasi diperlukan", status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="TrendWatch"'})
+    if header[:6].lower() != "basic ":
+        return False
+    try:
+        user, _, pwd = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+        return auth.check_credentials(user, pwd)
+    except Exception:
+        return False
+
+
+def _client_key(request: Request) -> str:
+    # Di belakang proxy, entri terakhir X-Forwarded-For ditambahkan proxy tepercaya; tanpa proxy dipakai alamat langsung.
+    fwd = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
+    return fwd or (request.client.host if request.client else "?")
+
+
+def _is_https(request: Request) -> bool:
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
+
+
+def _logged_in(request: Request) -> bool:
+    return bool(auth.verify_token(request.cookies.get(auth.COOKIE))) or _basic_ok(request)
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    """Halaman login + sesi cookie, aktif hanya jika TRENDWATCH_PASSWORD diisi (lihat ``auth.py``).
+    Halaman tanpa sesi dialihkan ke /login, API dijawab 401. Pakai HTTPS agar kata sandi tidak terkirim polos."""
+    if not auth.enabled() or request.url.path in _PUBLIC_PATHS or _logged_in(request):
+        return await call_next(request)
+    if request.url.path.startswith("/api/"):
+        return JSONResponse({"detail": "Perlu login."}, status_code=401)
+    target = request.url.path + (("?" + request.url.query) if request.url.query else "")
+    return RedirectResponse("/login?" + urlencode({"next": target}), status_code=303)
+
+
+@app.get("/login")
+def login_page(request: Request):
+    if not auth.enabled() or _logged_in(request):
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(STATIC_DIR / "login.html")
+
+
+@app.post("/api/login")
+def api_login(body: LoginBody, request: Request):
+    if not auth.enabled():
+        raise HTTPException(404, "Login tidak diaktifkan.")
+    key = _client_key(request)
+    wait = _throttle.retry_after(key)
+    if wait:
+        raise HTTPException(429, f"Terlalu banyak percobaan. Coba lagi dalam {wait} detik.",
+                            headers={"Retry-After": str(wait)})
+    if not auth.check_credentials(body.username, body.password):
+        _throttle.fail(key)
+        raise HTTPException(401, "Nama pengguna atau kata sandi salah.")
+    _throttle.reset(key)
+    resp = JSONResponse({"ok": True, "next": auth.safe_next(body.next)})
+    resp.set_cookie(auth.COOKIE, auth.make_token(auth.username()), max_age=auth.session_seconds(), httponly=True,
+                    samesite="lax", secure=_is_https(request), path="/")
+    return resp
+
+
+@app.post("/api/logout")
+def api_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/session")
+def api_session():
+    """Dipakai halaman untuk menampilkan tombol Keluar hanya bila login aktif."""
+    return {"auth": auth.enabled(), "user": auth.username() if auth.enabled() else None}
 
 
 def _geo(value: str) -> str:

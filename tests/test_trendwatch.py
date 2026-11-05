@@ -376,7 +376,7 @@ def test_api_basic_auth(client, monkeypatch):
     monkeypatch.setenv("TRENDWATCH_PASSWORD", "rahasia")
     assert client.get("/api/health").status_code == 200  # health check tetap terbuka
     r = client.get("/api/overview?geo=ID")
-    assert r.status_code == 401 and "Basic" in r.headers["www-authenticate"]
+    assert r.status_code == 401
     assert client.get("/api/overview?geo=ID", auth=("admin", "salah")).status_code == 401
     assert client.get("/api/overview?geo=ID", auth=("admin", "rahasia")).status_code == 200
     assert client.get("/", auth=("admin", "rahasia")).status_code == 200

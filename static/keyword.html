@@ -9,6 +9,7 @@
 <body>
 <div class="wrap">
   <header>
+    <button type="button" id="logout" hidden style="float:right">Keluar</button>
     <div>
       <h1>Keyword research</h1>
       <div class="sub">Satu kata kunci menjadi ratusan ide keyword, lengkap dengan maksud pencarian, tahap funnel, tren, dan kelompok topik.</div>
@@ -411,6 +412,8 @@ async function copyAll() {
 }
 
 $("form").addEventListener("submit", (e) => { e.preventDefault(); search(); });
+fetch("/api/session").then(r => r.ok ? r.json() : null).then(d => { if (d && d.auth) $("logout").hidden = false; }).catch(() => {});
+$("logout").addEventListener("click", async () => { try { await fetch("/api/logout", { method: "POST" }); } finally { location.assign("/login"); } });
 $("copyall").addEventListener("click", copyAll);
 $("csv").addEventListener("click", downloadCsv);
 $("more").addEventListener("click", () => { state.shown += PAGE; renderList(); });

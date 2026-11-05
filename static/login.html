@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Masuk · Keyword research</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .login { max-width: 380px; margin: 12vh auto 0; }
+    .login h1 { margin: 0 0 4px; }
+    .login .field { display: block; margin-top: 14px; }
+    .login .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .login input { width: 100%; box-sizing: border-box; }
+    .login button.primary { width: 100%; margin-top: 18px; }
+    .login .err { color: var(--down, #c0392b); font-size: 13px; margin: 12px 0 0; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <form id="form" class="card login" autocomplete="on">
+    <h1>Masuk</h1>
+    <div class="sub">Keyword research</div>
+    <label class="field"><span>Nama pengguna</span>
+      <input id="u" name="username" type="text" autocomplete="username" required autofocus></label>
+    <label class="field"><span>Kata sandi</span>
+      <input id="p" name="password" type="password" autocomplete="current-password" required></label>
+    <p class="err" id="err" role="alert" aria-live="assertive"></p>
+    <button class="primary" id="go" type="submit">Masuk</button>
+  </form>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("err").textContent = ""; $("go").disabled = true;
+  try {
+    const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("u").value, password: $("p").value, next: new URLSearchParams(location.search).get("next") || "/" }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Gagal masuk (" + res.status + ")");
+    location.assign(body.next || "/");
+  } catch (err) {
+    $("err").textContent = err.message; $("p").value = ""; $("p").focus();
+  } finally { $("go").disabled = false; }
+});
+</script>
+</body>
+</html>

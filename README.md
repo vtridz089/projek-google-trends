@@ -157,9 +157,18 @@ memakai format yang sama hari ini. Cara memastikannya: jalankan tanpa data conto
 | `TRENDWATCH_DISCOVERY_CSV` | `data/discovery.csv` | CSV hasil Daily Discovery |
 | `TRENDWATCH_DISCOVER_WINDOWS` | `4` | Jumlah rentang waktu per topik untuk `discover` |
 | `TRENDWATCH_TZ` | `Asia/Jakarta` | Zona waktu untuk menentukan "hari ini" |
-| `TRENDWATCH_PASSWORD` | (kosong) | Jika diisi, seluruh dashboard dan API meminta login (HTTP Basic) |
-| `TRENDWATCH_USER` | `admin` | Nama pengguna untuk login di atas |
+| `TRENDWATCH_PASSWORD` | (kosong) | Jika diisi, aplikasi meminta login lewat halaman `/login` (sesi cookie). Kosong = tanpa login |
+| `TRENDWATCH_USER` | `admin` | Nama pengguna untuk login di atas (satu akun) |
+| `TRENDWATCH_SESSION_HOURS` | `12` | Lama sesi login sebelum diminta masuk lagi |
+| `TRENDWATCH_SECRET` | (turunan dari kata sandi) | Kunci penanda tangan sesi; bila kosong, mengganti kata sandi otomatis mengeluarkan semua sesi |
 | `TRENDWATCH_COLLECT_MIN_INTERVAL` | `300` | Jeda minimal (detik) antar pengambilan tren harian |
+
+## Login
+
+Isi `TRENDWATCH_PASSWORD` untuk mengaktifkan login. Halaman akan dialihkan ke `/login`, sesi disimpan di cookie
+(HttpOnly, SameSite=Lax, bertanda tangan HMAC) dan berlaku 12 jam, dan ada tombol **Keluar**. API tanpa sesi dijawab 401;
+skrip seperti `curl -u admin:sandi` tetap bisa memakai HTTP Basic dengan akun yang sama. Lima kali salah dari alamat yang sama
+dikunci 5 menit. `/api/health` tetap terbuka untuk health check. Hanya ada satu akun; pakai HTTPS agar kata sandi tidak terkirim polos.
 
 ## Mempublikasikan (opsional)
 
