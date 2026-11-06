@@ -5,10 +5,8 @@ Buka:      http://127.0.0.1:8000
 """
 from __future__ import annotations
 
-import base64
 import logging
 import os
-import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -20,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, db, explore_service, keyword_research
+from . import auth, db, explore_service, keyword_research, users
 from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
@@ -43,6 +41,8 @@ _last_collect: dict[str, float] = {}
 async def lifespan(_: FastAPI):
     db.init_db()
     db.discovery_init()
+    users.init()
+    auth.seed_admin()
     csv_path = os.environ.get("TRENDWATCH_CSV", "data/snapshots.csv")
     if os.path.exists(csv_path):
         try:
@@ -63,29 +63,37 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="TrendWatch", lifespan=lifespan)
 
 
-_throttle = auth.Throttle()
-_PUBLIC_PATHS = {"/api/health", "/login", "/api/login", "/static/style.css"}
+_PUBLIC_PATHS = {"/api/health", "/api/session", "/api/login", "/api/register", "/api/forgot", "/api/reset",
+                 "/login", "/daftar", "/lupa", "/reset", "/static/style.css"}
 
 
 class LoginBody(BaseModel):
-    username: str = ""
+    email: str = ""
     password: str = ""
     next: str = "/"
 
 
-def _basic_ok(request: Request) -> bool:
-    """Klien non-browser (curl, skrip) boleh memakai HTTP Basic dengan akun yang sama."""
-    header = request.headers.get("authorization", "")
-    if header[:6].lower() != "basic ":
-        return False
-    try:
-        user, _, pwd = base64.b64decode(header[6:]).decode("utf-8").partition(":")
-        return auth.check_credentials(user, pwd)
-    except Exception:
-        return False
+class RegisterBody(BaseModel):
+    name: str = ""
+    email: str = ""
+    password: str = ""
 
 
-def _client_key(request: Request) -> str:
+class PasswordBody(BaseModel):
+    current: str = ""
+    new: str = ""
+
+
+class ForgotBody(BaseModel):
+    email: str = ""
+
+
+class ResetBody(BaseModel):
+    token: str = ""
+    password: str = ""
+
+
+def _client_ip(request: Request) -> str:
     # Di belakang proxy, entri terakhir X-Forwarded-For ditambahkan proxy tepercaya; tanpa proxy dipakai alamat langsung.
     fwd = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
     return fwd or (request.client.host if request.client else "?")
@@ -95,15 +103,23 @@ def _is_https(request: Request) -> bool:
     return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
 
 
-def _logged_in(request: Request) -> bool:
-    return bool(auth.verify_token(request.cookies.get(auth.COOKIE))) or _basic_ok(request)
+def _auth_error(exc: auth.AuthError) -> HTTPException:
+    return HTTPException(exc.status, exc.message, headers={"Retry-After": str(exc.retry_after)} if exc.retry_after else None)
+
+
+def _session_response(request: Request, user: dict, payload: dict | None = None) -> JSONResponse:
+    resp = JSONResponse({"ok": True, **(payload or {})})
+    resp.set_cookie(auth.COOKIE, auth.make_token(user), max_age=auth.session_seconds(), httponly=True,
+                    samesite="lax", secure=_is_https(request), path="/")
+    return resp
 
 
 @app.middleware("http")
 async def require_login(request: Request, call_next):
-    """Halaman login + sesi cookie, aktif hanya jika TRENDWATCH_PASSWORD diisi (lihat ``auth.py``).
-    Halaman tanpa sesi dialihkan ke /login, API dijawab 401. Pakai HTTPS agar kata sandi tidak terkirim polos."""
-    if not auth.enabled() or request.url.path in _PUBLIC_PATHS or _logged_in(request):
+    """Semua halaman dan API wajib login (kecuali jalur publik). Tanpa sesi: halaman dialihkan ke /login, API dijawab 401.
+    Dimatikan hanya dengan TRENDWATCH_AUTH=off (pengembangan lokal). Pakai HTTPS agar kata sandi tidak terkirim polos."""
+    request.state.user = auth.verify_token(request.cookies.get(auth.COOKIE)) if auth.enabled() else None
+    if not auth.enabled() or request.url.path in _PUBLIC_PATHS or request.state.user:
         return await call_next(request)
     if request.url.path.startswith("/api/"):
         return JSONResponse({"detail": "Perlu login."}, status_code=401)
@@ -111,30 +127,51 @@ async def require_login(request: Request, call_next):
     return RedirectResponse("/login?" + urlencode({"next": target}), status_code=303)
 
 
-@app.get("/login")
-def login_page(request: Request):
-    if not auth.enabled() or _logged_in(request):
+def _auth_page(request: Request, name: str = "login.html"):
+    if not auth.enabled() or (request.state.user and name == "login.html" and request.url.path != "/reset"):
         return RedirectResponse("/", status_code=303)
-    return FileResponse(STATIC_DIR / "login.html")
+    return FileResponse(STATIC_DIR / name)
+
+
+@app.get("/login")
+@app.get("/daftar")
+@app.get("/lupa")
+@app.get("/reset")
+def auth_pages(request: Request):
+    return _auth_page(request)
+
+
+@app.get("/akun")
+def account_page():
+    return FileResponse(STATIC_DIR / "akun.html")
+
+
+@app.get("/api/session")
+def api_session(request: Request):
+    user = request.state.user
+    return {"auth": auth.enabled(), "user": auth.public(user) if user else None}
+
+
+@app.post("/api/register")
+def api_register(body: RegisterBody, request: Request):
+    if not auth.enabled():
+        raise HTTPException(404, "Login tidak diaktifkan.")
+    try:
+        user = auth.register(body.name, body.email, body.password, _client_ip(request))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return _session_response(request, user, {"next": "/"})
 
 
 @app.post("/api/login")
 def api_login(body: LoginBody, request: Request):
     if not auth.enabled():
         raise HTTPException(404, "Login tidak diaktifkan.")
-    key = _client_key(request)
-    wait = _throttle.retry_after(key)
-    if wait:
-        raise HTTPException(429, f"Terlalu banyak percobaan. Coba lagi dalam {wait} detik.",
-                            headers={"Retry-After": str(wait)})
-    if not auth.check_credentials(body.username, body.password):
-        _throttle.fail(key)
-        raise HTTPException(401, "Nama pengguna atau kata sandi salah.")
-    _throttle.reset(key)
-    resp = JSONResponse({"ok": True, "next": auth.safe_next(body.next)})
-    resp.set_cookie(auth.COOKIE, auth.make_token(auth.username()), max_age=auth.session_seconds(), httponly=True,
-                    samesite="lax", secure=_is_https(request), path="/")
-    return resp
+    try:
+        user = auth.login(body.email, body.password, _client_ip(request))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return _session_response(request, user, {"next": auth.safe_next(body.next)})
 
 
 @app.post("/api/logout")
@@ -144,10 +181,34 @@ def api_logout():
     return resp
 
 
-@app.get("/api/session")
-def api_session():
-    """Dipakai halaman untuk menampilkan tombol Keluar hanya bila login aktif."""
-    return {"auth": auth.enabled(), "user": auth.username() if auth.enabled() else None}
+@app.post("/api/password")
+def api_password(body: PasswordBody, request: Request):
+    user = request.state.user
+    if not user:
+        raise HTTPException(401, "Perlu login.")
+    try:
+        fresh = auth.change_password(user, body.current, body.new)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return _session_response(request, fresh)  # sesi lama tidak sah lagi; perangkat ini diberi sesi baru
+
+
+@app.post("/api/forgot")
+def api_forgot(body: ForgotBody, request: Request):
+    try:
+        auth.forgot(body.email, _client_ip(request), str(request.base_url))
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return {"ok": True, "message": "Jika email itu terdaftar, tautan untuk mengatur ulang kata sandi sudah dikirim."}
+
+
+@app.post("/api/reset")
+def api_reset(body: ResetBody):
+    try:
+        auth.reset(body.token, body.password)
+    except auth.AuthError as exc:
+        raise _auth_error(exc) from exc
+    return {"ok": True}
 
 
 def _geo(value: str) -> str:

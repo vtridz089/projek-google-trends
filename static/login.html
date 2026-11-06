@@ -6,43 +6,90 @@
   <title>Masuk · Keyword research</title>
   <link rel="stylesheet" href="/static/style.css">
   <style>
-    .login { max-width: 380px; margin: 12vh auto 0; }
-    .login h1 { margin: 0 0 4px; }
-    .login .field { display: block; margin-top: 14px; }
-    .login .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-    .login input { width: 100%; box-sizing: border-box; }
-    .login button.primary { width: 100%; margin-top: 18px; }
-    .login .err { color: var(--down, #c0392b); font-size: 13px; margin: 12px 0 0; min-height: 1.2em; }
+    .auth { max-width: 400px; margin: 10vh auto 0; }
+    .auth h1 { margin: 0 0 4px; }
+    .auth .field { display: block; margin-top: 14px; }
+    .auth .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .auth input { width: 100%; box-sizing: border-box; }
+    .auth button.primary { width: 100%; margin-top: 18px; }
+    .auth .msg { font-size: 13px; margin: 12px 0 0; min-height: 1.2em; }
+    .auth .msg.err { color: var(--down, #c0392b); }
+    .auth .msg.ok { color: var(--up, #1e8e5a); }
+    .auth .alt { margin-top: 16px; font-size: 13px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .auth .alt a { color: var(--accent); }
+    .auth .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <form id="form" class="card login" autocomplete="on">
-    <h1>Masuk</h1>
-    <div class="sub">Keyword research</div>
-    <label class="field"><span>Nama pengguna</span>
-      <input id="u" name="username" type="text" autocomplete="username" required autofocus></label>
-    <label class="field"><span>Kata sandi</span>
-      <input id="p" name="password" type="password" autocomplete="current-password" required></label>
-    <p class="err" id="err" role="alert" aria-live="assertive"></p>
+  <form id="form" class="card auth" novalidate>
+    <h1 id="title">Masuk</h1>
+    <div class="sub" id="subtitle">Keyword research</div>
+    <label class="field" data-f="name"><span>Nama</span>
+      <input id="name" type="text" autocomplete="name" maxlength="80"></label>
+    <label class="field" data-f="email"><span>Email</span>
+      <input id="email" type="email" autocomplete="username" maxlength="254" inputmode="email"></label>
+    <label class="field" data-f="password"><span id="pwlabel">Kata sandi</span>
+      <input id="password" type="password" maxlength="200">
+      <div class="hint" id="pwhint" hidden>Minimal 8 karakter.</div></label>
+    <label class="field" data-f="confirm"><span>Ulangi kata sandi</span>
+      <input id="confirm" type="password" autocomplete="new-password" maxlength="200"></label>
+    <p class="msg" id="msg" role="alert" aria-live="polite"></p>
     <button class="primary" id="go" type="submit">Masuk</button>
+    <div class="alt" id="alt"></div>
   </form>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
+const MODES = {
+  "/login":  { title: "Masuk", sub: "Keyword research", btn: "Masuk", fields: ["email", "password"], pw: "current-password",
+               alt: [["/lupa", "Lupa kata sandi?"], ["/daftar", "Buat akun"]] },
+  "/daftar": { title: "Buat akun", sub: "Daftar untuk memakai Keyword research", btn: "Daftar", fields: ["name", "email", "password", "confirm"], pw: "new-password",
+               alt: [["/login", "Sudah punya akun? Masuk"]] },
+  "/lupa":   { title: "Lupa kata sandi", sub: "Kami kirim tautan pengaturan ulang ke email Anda", btn: "Kirim tautan", fields: ["email"],
+               alt: [["/login", "Kembali ke halaman masuk"]] },
+  "/reset":  { title: "Atur ulang kata sandi", sub: "Pilih kata sandi baru", btn: "Simpan kata sandi", fields: ["password", "confirm"], pw: "new-password",
+               alt: [["/login", "Kembali ke halaman masuk"]] },
+};
+const mode = MODES[location.pathname] || MODES["/login"];
+const qs = new URLSearchParams(location.search);
+const next = qs.get("next") || "/";
+document.title = mode.title + " · Keyword research";
+$("title").textContent = mode.title; $("subtitle").textContent = mode.sub; $("go").textContent = mode.btn;
+document.querySelectorAll("[data-f]").forEach(l => { l.hidden = !mode.fields.includes(l.dataset.f); });
+if (mode.pw) $("password").autocomplete = mode.pw;
+$("pwhint").hidden = !(mode.pw === "new-password");
+if (location.pathname === "/reset") $("pwlabel").textContent = "Kata sandi baru";
+const alt = (path) => path + (path === "/login" || path === "/daftar" ? (next !== "/" ? "?next=" + encodeURIComponent(next) : "") : "");
+mode.alt.forEach(([href, text]) => { const a = document.createElement("a"); a.href = alt(href); a.textContent = text; $("alt").append(a); });
+
+const show = (text, kind) => { $("msg").textContent = text; $("msg").className = "msg " + (kind || ""); };
+async function post(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Terjadi kesalahan (" + res.status + ")");
+  return data;
+}
 $("form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  $("err").textContent = ""; $("go").disabled = true;
+  e.preventDefault(); show(""); 
+  const v = { name: $("name").value, email: $("email").value, password: $("password").value };
+  const need = mode.fields.filter(f => f !== "confirm" && !String(v[f] || "").trim());
+  if (need.length) { show("Lengkapi semua isian.", "err"); return; }
+  if (mode.fields.includes("confirm") && v.password !== $("confirm").value) { show("Kata sandi dan ulangannya tidak sama.", "err"); return; }
+  $("go").disabled = true;
   try {
-    const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: $("u").value, password: $("p").value, next: new URLSearchParams(location.search).get("next") || "/" }) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Gagal masuk (" + res.status + ")");
-    location.assign(body.next || "/");
+    if (location.pathname === "/daftar") { const d = await post("/api/register", v); location.assign(d.next || "/"); }
+    else if (location.pathname === "/lupa") { const d = await post("/api/forgot", { email: v.email }); show(d.message, "ok"); }
+    else if (location.pathname === "/reset") {
+      await post("/api/reset", { token: qs.get("token") || "", password: v.password });
+      show("Kata sandi diperbarui. Mengalihkan ke halaman masuk…", "ok"); setTimeout(() => location.assign("/login"), 1500);
+    } else { const d = await post("/api/login", { email: v.email, password: v.password, next }); location.assign(d.next || "/"); }
   } catch (err) {
-    $("err").textContent = err.message; $("p").value = ""; $("p").focus();
+    show(err.message, "err"); if (mode.pw) { $("password").value = ""; $("confirm").value = ""; }
   } finally { $("go").disabled = false; }
 });
+(mode.fields[0] === "name" ? $("name") : mode.fields[0] === "email" ? $("email") : $("password")).focus();
 </script>
 </body>
 </html>

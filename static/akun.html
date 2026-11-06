@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Akun · Keyword research</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .acct { max-width: 440px; margin: 8vh auto 0; }
+    .acct dl { margin: 12px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
+    .acct dt { color: var(--muted); }
+    .acct h2 { margin-top: 24px; }
+    .acct .field { display: block; margin-top: 12px; }
+    .acct .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+    .acct input { width: 100%; box-sizing: border-box; }
+    .acct .row2 { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+    .acct .msg { font-size: 13px; margin: 12px 0 0; min-height: 1.2em; }
+    .acct .msg.err { color: var(--down, #c0392b); } .acct .msg.ok { color: var(--up, #1e8e5a); }
+    .acct a.back { color: var(--accent); font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card acct">
+    <a class="back" href="/">← Kembali ke Keyword research</a>
+    <h1 style="margin:10px 0 0">Akun</h1>
+    <dl><dt>Nama</dt><dd id="name">…</dd><dt>Email</dt><dd id="email">…</dd></dl>
+    <h2>Ganti kata sandi</h2>
+    <form id="form" novalidate>
+      <label class="field"><span>Kata sandi saat ini</span><input id="cur" type="password" autocomplete="current-password" maxlength="200"></label>
+      <label class="field"><span>Kata sandi baru (minimal 8 karakter)</span><input id="new" type="password" autocomplete="new-password" maxlength="200"></label>
+      <label class="field"><span>Ulangi kata sandi baru</span><input id="new2" type="password" autocomplete="new-password" maxlength="200"></label>
+      <p class="msg" id="msg" role="alert" aria-live="polite"></p>
+      <div class="row2"><button class="primary" id="go" type="submit">Simpan kata sandi</button>
+        <button type="button" id="logout">Keluar</button></div>
+    </form>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (t, k) => { $("msg").textContent = t; $("msg").className = "msg " + (k || ""); };
+fetch("/api/session").then(r => r.json()).then(d => {
+  if (!d.user) { location.assign("/login?next=/akun"); return; }
+  $("name").textContent = d.user.name; $("email").textContent = d.user.email;
+});
+$("logout").addEventListener("click", async () => { try { await fetch("/api/logout", { method: "POST" }); } finally { location.assign("/login"); } });
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault(); show("");
+  if (!$("cur").value || !$("new").value) { show("Lengkapi semua isian.", "err"); return; }
+  if ($("new").value !== $("new2").value) { show("Kata sandi baru dan ulangannya tidak sama.", "err"); return; }
+  $("go").disabled = true;
+  try {
+    const res = await fetch("/api/password", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current: $("cur").value, new: $("new").value }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof d.detail === "string" ? d.detail : "Terjadi kesalahan (" + res.status + ")");
+    show("Kata sandi diperbarui. Perangkat lain perlu masuk lagi.", "ok"); $("form").reset();
+  } catch (err) { show(err.message, "err"); } finally { $("go").disabled = false; }
+});
+</script>
+</body>
+</html>

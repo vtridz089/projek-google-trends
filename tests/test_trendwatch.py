@@ -372,16 +372,6 @@ def test_api_export_csv(client):
     assert rows[0] == db.CSV_FIELDS and len(rows) == 1 + 30
 
 
-def test_api_basic_auth(client, monkeypatch):
-    monkeypatch.setenv("TRENDWATCH_PASSWORD", "rahasia")
-    assert client.get("/api/health").status_code == 200  # health check tetap terbuka
-    r = client.get("/api/overview?geo=ID")
-    assert r.status_code == 401
-    assert client.get("/api/overview?geo=ID", auth=("admin", "salah")).status_code == 401
-    assert client.get("/api/overview?geo=ID", auth=("admin", "rahasia")).status_code == 200
-    assert client.get("/", auth=("admin", "rahasia")).status_code == 200
-
-
 def test_api_collect_rate_limit_and_errors(client, monkeypatch):
     import app.main as m
 

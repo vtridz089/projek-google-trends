@@ -157,23 +157,33 @@ memakai format yang sama hari ini. Cara memastikannya: jalankan tanpa data conto
 | `TRENDWATCH_DISCOVERY_CSV` | `data/discovery.csv` | CSV hasil Daily Discovery |
 | `TRENDWATCH_DISCOVER_WINDOWS` | `4` | Jumlah rentang waktu per topik untuk `discover` |
 | `TRENDWATCH_TZ` | `Asia/Jakarta` | Zona waktu untuk menentukan "hari ini" |
-| `TRENDWATCH_PASSWORD` | (kosong) | Jika diisi, aplikasi meminta login lewat halaman `/login` (sesi cookie). Kosong = tanpa login |
-| `TRENDWATCH_USER` | `admin` | Nama pengguna untuk login di atas (satu akun) |
-| `TRENDWATCH_SESSION_HOURS` | `12` | Lama sesi login sebelum diminta masuk lagi |
-| `TRENDWATCH_SECRET` | (turunan dari kata sandi) | Kunci penanda tangan sesi; bila kosong, mengganti kata sandi otomatis mengeluarkan semua sesi |
+| `TRENDWATCH_AUTH` | `on` | Login selalu wajib. Isi `off` hanya untuk pengembangan lokal (menonaktifkan seluruh login) |
+| `TRENDWATCH_SESSION_HOURS` | `168` | Lama sesi login (7 hari) |
+| `TRENDWATCH_SECRET` | (dibuat otomatis, disimpan di database) | Kunci penanda tangan sesi |
+| `TRENDWATCH_ADMIN_EMAIL`, `TRENDWATCH_ADMIN_PASSWORD`, `TRENDWATCH_ADMIN_NAME` | (kosong) | Membuat satu akun saat start bila belum ada (berguna di hosting yang databasenya hilang saat restart) |
+| `TRENDWATCH_SMTP_HOST`, `_PORT` (587), `_USER`, `_PASSWORD`, `_FROM`, `_SSL` | (kosong) | Server email untuk mengirim tautan lupa kata sandi |
+| `TRENDWATCH_BASE_URL` | (alamat dari permintaan) | Alamat publik aplikasi untuk tautan di email reset, mis. `https://app.contoh.id` |
 | `TRENDWATCH_COLLECT_MIN_INTERVAL` | `300` | Jeda minimal (detik) antar pengambilan tren harian |
 
-## Login
+## Akun dan login
 
-Isi `TRENDWATCH_PASSWORD` untuk mengaktifkan login. Halaman akan dialihkan ke `/login`, sesi disimpan di cookie
-(HttpOnly, SameSite=Lax, bertanda tangan HMAC) dan berlaku 12 jam, dan ada tombol **Keluar**. API tanpa sesi dijawab 401;
-skrip seperti `curl -u admin:sandi` tetap bisa memakai HTTP Basic dengan akun yang sama. Lima kali salah dari alamat yang sama
-dikunci 5 menit. `/api/health` tetap terbuka untuk health check. Hanya ada satu akun; pakai HTTPS agar kata sandi tidak terkirim polos.
+Aplikasi memakai akun pengguna seperti aplikasi web pada umumnya; **login selalu wajib**.
+
+- **Daftar** di `/daftar` (nama, email, kata sandi minimal 8 karakter), **masuk** di `/login`, **keluar** dari tombol di pojok kanan atas.
+- **Akun** di `/akun`: ganti kata sandi. Setelah diganti, sesi di perangkat lain otomatis tidak berlaku.
+- **Lupa kata sandi** di `/lupa`: tautan atur ulang (berlaku 1 jam, sekali pakai) dikirim ke email. Butuh server email (`TRENDWATCH_SMTP_*`).
+  Tanpa SMTP, tautannya ditulis ke log server (peringatan "SMTP belum diatur") sehingga tetap bisa dicoba saat pengembangan.
+- Kata sandi disimpan sebagai hash scrypt dengan garam acak; sesi berupa cookie HttpOnly bertanda tangan HMAC.
+  Percobaan masuk dibatasi (5 kali salah per akun dalam 15 menit; 10 per alamat IP dalam 5 menit), pendaftaran dan permintaan reset juga dibatasi.
+- Untuk pengembangan lokal tanpa login: `TRENDWATCH_AUTH=off`.
+- Semua akun adalah pengguna biasa dan melihat data yang sama; belum ada peran admin atau halaman kelola pengguna.
+- **Hosting gratis:** akun disimpan di database SQLite yang bisa hilang saat restart. Pakai penyimpanan permanen (volume),
+  atau isi `TRENDWATCH_ADMIN_EMAIL/PASSWORD` agar satu akun dibuat ulang tiap start. Pakai HTTPS.
 
 ## Mempublikasikan (opsional)
 
 Ada `Dockerfile`; platform seperti Render atau Railway bisa membangunnya dari repo ini. Jika dashboard bisa
-diakses publik, **isi `TRENDWATCH_PASSWORD`** dan gunakan HTTPS: pencarian memakai kuota SerpApi dan menghubungi
+diakses publik, gunakan HTTPS: pencarian memakai kuota SerpApi dan menghubungi
 Google atas nama Anda. Database SQLite di hosting gratis biasanya hilang saat restart; riwayat tren harian tetap
 aman karena dimuat ulang dari `data/snapshots.csv`.
 
