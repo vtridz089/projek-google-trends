@@ -13,7 +13,10 @@ COPY static ./static
 COPY data ./data
 
 # Jalankan sebagai pengguna biasa, bukan root.
-RUN useradd --create-home appuser && chown -R appuser /app
+# Database (akun + data) ada di /data. Pasang volume/disk permanen di sini, kalau tidak, akun hilang tiap kontainer dibuat ulang.
+RUN useradd --create-home appuser && mkdir /data && chown -R appuser /app /data
+ENV TRENDWATCH_DB=/data/trendwatch.db
+VOLUME /data
 USER appuser
 
 EXPOSE 8000

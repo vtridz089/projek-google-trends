@@ -377,3 +377,12 @@ def test_login_disabled_switch(client, monkeypatch):
     assert client.get("/").status_code == 200 and client.get("/login").status_code == 303
     assert client.post("/api/login", json={}).status_code == 404
     assert client.get("/api/session").json() == {"auth": False, "user": None}
+
+
+def test_accounts_persist_across_restart_and_default_db_ignores_cwd(tmp_path, monkeypatch):
+    make()
+    db.init_db(); users.init()                              # "restart": init ulang tidak menghapus akun
+    assert auth.login("budi@contoh.id", "rahasia123", "1.1.1.1")["name"] == "Budi"
+    monkeypatch.delenv("TRENDWATCH_DB")
+    monkeypatch.chdir(tmp_path)
+    assert db.db_path() == str(db.DEFAULT_DB) and db.DEFAULT_DB.is_absolute()

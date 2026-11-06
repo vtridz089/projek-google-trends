@@ -7,6 +7,7 @@ import os
 import sqlite3
 from contextlib import closing
 from datetime import date, timedelta
+from pathlib import Path
 
 from .collector import DEMO_GEO, TrendItem
 
@@ -14,8 +15,13 @@ CSV_FIELDS = ["geo", "day", "keyword", "traffic_text", "traffic_num",
               "pub_date", "news_title", "news_url", "news_source"]
 
 
+DEFAULT_DB = Path(__file__).resolve().parent.parent / "trendwatch.db"
+
+
 def db_path() -> str:
-    return os.environ.get("TRENDWATCH_DB", "trendwatch.db")
+    """Lokasi database. Bawaannya di folder proyek (bukan folder kerja), supaya akun dan data tidak "hilang"
+    hanya karena aplikasi dijalankan dari folder lain. Ubah dengan TRENDWATCH_DB (mis. ke volume permanen)."""
+    return os.environ.get("TRENDWATCH_DB") or str(DEFAULT_DB)
 
 
 def connect() -> sqlite3.Connection:

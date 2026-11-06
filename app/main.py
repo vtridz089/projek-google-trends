@@ -42,6 +42,7 @@ async def lifespan(_: FastAPI):
     db.init_db()
     db.discovery_init()
     users.init()
+    log.info("Database: %s (%d akun)", db.db_path(), users.count())
     auth.seed_admin()
     csv_path = os.environ.get("TRENDWATCH_CSV", "data/snapshots.csv")
     if os.path.exists(csv_path):

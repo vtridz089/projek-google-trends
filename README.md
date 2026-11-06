@@ -151,7 +151,7 @@ memakai format yang sama hari ini. Cara memastikannya: jalankan tanpa data conto
 | `TRENDWATCH_TZ_MINUTES` | `-420` | Selisih zona waktu untuk permintaan ke Google (WIB = -420) |
 | `TRENDWATCH_SOURCE` | `rss` | Sumber tren harian: `rss` atau `mock` |
 | `TRENDWATCH_GEO` | `ID` | Negara bawaan |
-| `TRENDWATCH_DB` | `trendwatch.db` | Lokasi file database SQLite |
+| `TRENDWATCH_DB` | `trendwatch.db` di folder proyek | Lokasi file database SQLite (akun, riwayat, cache). Di Docker otomatis `/data/trendwatch.db` |
 | `TRENDWATCH_CSV` | `data/snapshots.csv` | CSV riwayat tren harian yang dimuat saat start |
 | `TRENDWATCH_WATCHLIST_CSV` | `data/watchlist.csv` | CSV topik Watchlist |
 | `TRENDWATCH_DISCOVERY_CSV` | `data/discovery.csv` | CSV hasil Daily Discovery |
@@ -177,7 +177,8 @@ Aplikasi memakai akun pengguna seperti aplikasi web pada umumnya; **login selalu
   Percobaan masuk dibatasi (5 kali salah per akun dalam 15 menit; 10 per alamat IP dalam 5 menit), pendaftaran dan permintaan reset juga dibatasi.
 - Untuk pengembangan lokal tanpa login: `TRENDWATCH_AUTH=off`.
 - Semua akun adalah pengguna biasa dan melihat data yang sama; belum ada peran admin atau halaman kelola pengguna.
-- **Hosting gratis:** akun disimpan di database SQLite yang bisa hilang saat restart. Pakai penyimpanan permanen (volume),
+- **Di mana akun disimpan:** di file SQLite (`trendwatch.db` di folder proyek; lokasinya tercatat di log saat aplikasi menyala). File ini tidak ikut Git. Menyalin atau memindahkan proyek tanpa file itu berarti mulai dari akun kosong.
+- **Hosting/Docker:** sistem file kontainer hilang saat dibuat ulang (deploy ulang, restart di hosting gratis). Pasang volume/disk permanen di `/data` (Docker: `-v cerekey-data:/data`),
   atau isi `TRENDWATCH_ADMIN_EMAIL/PASSWORD` agar satu akun dibuat ulang tiap start. Pakai HTTPS.
 
 ## Mempublikasikan (opsional)
