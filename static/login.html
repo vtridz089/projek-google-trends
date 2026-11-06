@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Masuk · Keyword research</title>
+  <title>Masuk · Cerekey</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
   <link rel="stylesheet" href="/static/style.css">
   <style>
-    .auth { max-width: 400px; margin: 10vh auto 0; }
+    .auth { max-width: 400px; margin: 10px auto 0; }
     .auth h1 { margin: 0 0 4px; }
     .auth .field { display: block; margin-top: 14px; }
     .auth .field span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
@@ -23,9 +24,10 @@
 </head>
 <body>
 <div class="wrap">
+  <img class="authlogo" src="/static/logo.png" alt="Cerekey" width="280" height="237">
   <form id="form" class="card auth" novalidate>
     <h1 id="title">Masuk</h1>
-    <div class="sub" id="subtitle">Keyword research</div>
+    <div class="sub" id="subtitle">Cerekey · Keyword research</div>
     <label class="field" data-f="name"><span>Nama</span>
       <input id="name" type="text" autocomplete="name" maxlength="80"></label>
     <label class="field" data-f="email"><span>Email</span>
@@ -43,9 +45,9 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const MODES = {
-  "/login":  { title: "Masuk", sub: "Keyword research", btn: "Masuk", fields: ["email", "password"], pw: "current-password",
+  "/login":  { title: "Masuk", sub: "Masuk untuk lanjut meriset keyword", btn: "Masuk", fields: ["email", "password"], pw: "current-password",
                alt: [["/lupa", "Lupa kata sandi?"], ["/daftar", "Buat akun"]] },
-  "/daftar": { title: "Buat akun", sub: "Daftar untuk memakai Keyword research", btn: "Daftar", fields: ["name", "email", "password", "confirm"], pw: "new-password",
+  "/daftar": { title: "Buat akun", sub: "Daftar gratis untuk mulai meriset keyword", btn: "Daftar", fields: ["name", "email", "password", "confirm"], pw: "new-password",
                alt: [["/login", "Sudah punya akun? Masuk"]] },
   "/lupa":   { title: "Lupa kata sandi", sub: "Kami kirim tautan pengaturan ulang ke email Anda", btn: "Kirim tautan", fields: ["email"],
                alt: [["/login", "Kembali ke halaman masuk"]] },
@@ -55,7 +57,7 @@ const MODES = {
 const mode = MODES[location.pathname] || MODES["/login"];
 const qs = new URLSearchParams(location.search);
 const next = qs.get("next") || "/";
-document.title = mode.title + " · Keyword research";
+document.title = mode.title + " · Cerekey";
 $("title").textContent = mode.title; $("subtitle").textContent = mode.sub; $("go").textContent = mode.btn;
 document.querySelectorAll("[data-f]").forEach(l => { l.hidden = !mode.fields.includes(l.dataset.f); });
 if (mode.pw) $("password").autocomplete = mode.pw;

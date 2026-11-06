@@ -253,7 +253,7 @@ def forgot(email: str, ip: str, base_url: str, now: float | None = None) -> None
     raw = secrets.token_urlsafe(32)
     users.reset_put(hashlib.sha256(raw.encode()).hexdigest(), user["id"], now + RESET_TTL)
     link = f"{(os.environ.get('TRENDWATCH_BASE_URL') or base_url).rstrip('/')}/reset?token={raw}"
-    body = (f"Halo {user['name']},\n\nAda permintaan mengatur ulang kata sandi akun Keyword research Anda.\n"
+    body = (f"Halo {user['name']},\n\nAda permintaan mengatur ulang kata sandi akun Cerekey Anda.\n"
             f"Buka tautan ini dalam 1 jam:\n{link}\n\nBila bukan Anda yang meminta, abaikan email ini; kata sandi tidak berubah.\n")
     if mailer.configured():
         def _send():

@@ -60,10 +60,10 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="TrendWatch", lifespan=lifespan)
+app = FastAPI(title="Cerekey", lifespan=lifespan)
 
 
-_PUBLIC_PATHS = {"/api/health", "/api/session", "/api/login", "/api/register", "/api/forgot", "/api/reset",
+_PUBLIC_PATHS = {"/static/logo.png", "/static/mark.png", "/static/favicon.png", "/api/health", "/api/session", "/api/login", "/api/register", "/api/forgot", "/api/reset",
                  "/login", "/daftar", "/lupa", "/reset", "/static/style.css"}
 
 

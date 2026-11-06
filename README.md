@@ -1,4 +1,4 @@
-# TrendWatch
+# Cerekey (kode: TrendWatch)
 
 Dashboard Google Trends untuk proyek PKL. Ketik sebuah topik (misalnya **BUMN**) dan lihat **10 pencarian
 yang sedang booming** untuk topik itu. Ada juga halaman untuk menjelajah keyword dari waktu ke waktu dan

@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TrendWatch · Keyword research</title>
+<title>Cerekey · Keyword research</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="wrap">
   <header>
-    <span id="who" hidden style="float:right"><a id="whoname" href="/akun"></a> <button type="button" id="logout">Keluar</button></span>
-    <div>
-      <h1>Keyword research</h1>
-      <div class="sub">Satu kata kunci menjadi ratusan ide keyword, lengkap dengan maksud pencarian, tahap funnel, tren, dan kelompok topik.</div>
-    </div>
+    <a class="brand" href="/" aria-label="Cerekey, ke halaman utama">
+      <img src="/static/mark.png" alt="" width="64" height="39">
+      <span><span class="wordmark">Cerekey</span><span class="tagline">Keyword research</span></span>
+    </a>
+    <span id="who" class="userbar" hidden><a id="whoname" href="/akun" title="Akun saya"></a><button type="button" id="logout">Keluar</button></span>
   </header>
 
   <form id="form" class="card searchform" autocomplete="off">
@@ -55,6 +56,7 @@
   <span id="copystatus" class="sr-only" role="status" aria-live="polite"></span>
 
   <section class="card intro" id="intro">
+    <img src="/static/mark.png" alt="" width="150" height="91">
     <p><b>Ketik satu kata kunci, lalu klik Cari keyword.</b></p>
     <p>Ide keyword dikumpulkan dari <i>saran pencarian Google</i> (awalan "cara", "apa itu", akhiran "terbaik", "harga", dan seterusnya) dan dari <i>Google Trends</i> untuk menandai mana yang sedang naik.</p>
     <p>Tiap keyword diberi <b>maksud pencarian</b> (informasional, komersial, transaksional, navigasi), <b>tahap funnel</b> (TOFU, MOFU, BOFU), dan dikelompokkan per topik, jadi mudah dipetakan ke konten.</p>
@@ -118,6 +120,7 @@
   </div>
 
   <footer>
+    <div class="brand-foot"><img src="/static/favicon.png" alt="" width="28" height="28"><b>Cerekey</b></div>
     Data berasal dari Google (saran pencarian dan Google Trends, endpoint tidak resmi yang bisa dibatasi atau berubah).
     Kata kunci yang Anda ketik dikirim ke Google untuk mengambil data tersebut.
   </footer>
