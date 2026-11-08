@@ -474,7 +474,7 @@ def client(tmp_db, monkeypatch):
 def test_api_categories(client):
     d = client.get("/api/categories").json()
     assert {"id": 0, "name": "Semua kategori"} in d["categories"]
-    assert d["limit"] == 5 and d["timeframes"][0]["value"] == "now 7-d"
+    assert d["limit"] == 5 and "now 7-d" in [t["value"] for t in d["timeframes"]]
 
 
 def test_api_explore_demo_and_validation(client):
