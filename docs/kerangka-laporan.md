@@ -6,7 +6,7 @@ kampus/sekolah dan instansi Anda. Bagian bertanda **[ISI]** adalah hal yang hany
 ## Bab I. Pendahuluan
 - **Latar belakang:** pentingnya memantau topik yang sedang dicari masyarakat (konten, pemasaran,
   layanan publik). **[ISI]** kaitkan dengan kebutuhan instansi tempat PKL.
-- **Rumusan masalah:** bagaimana membangun dashboard yang menampilkan keyword yang sedang naik
+- **Rumusan masalah:** bagaimana membangun aplikasi keyword research (Cerekey) yang menampilkan keyword yang sedang naik
   dari Google Trends secara otomatis dan mudah dibaca?
 - **Tujuan dan manfaat.**
 - **Batasan masalah:** hanya tren harian per negara; traffic berupa perkiraan; bukan API resmi

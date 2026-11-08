@@ -85,9 +85,9 @@ Status dihitung dengan membandingkan hari terakhir yang ada datanya dengan hari 
 - **Kegagalan dibuat terlihat.** Pengambilan yang gagal membuat job Actions merah, bukan sukses palsu.
 - **Pembatasan pengambilan** (jeda minimal per negara) agar tidak membanjiri sumber data.
 
-## 6. Halaman Booming dan Jelajah
+## 6. Mesin Booming dan Jelajah (API, tanpa halaman)
 
-Dua halaman ini memakai satu lapisan sumber data (`app/explore.py`) dan satu cache SQLite.
+Dua fitur ini (halamannya sudah dihapus, API tetap ada) memakai satu lapisan sumber data (`app/explore.py`) dan satu cache SQLite.
 
 ```mermaid
 flowchart LR

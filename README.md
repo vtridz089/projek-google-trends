@@ -1,20 +1,34 @@
-# Cerekey (kode: TrendWatch)
+# Cerekey
 
-Dashboard Google Trends untuk proyek PKL. Ketik sebuah topik (misalnya **BUMN**) dan lihat **10 pencarian
-yang sedang booming** untuk topik itu. Ada juga halaman untuk menjelajah keyword dari waktu ke waktu dan
-tren harian per negara.
+Aplikasi web **keyword research** untuk proyek PKL (nama kode di repo: TrendWatch). Ketik satu kata kunci (misalnya
+**cpns**) dan dapatkan ratusan ide keyword dari Google Autocomplete (opsional YouTube dan Bing) yang digabung dengan
+data Google Trends, lengkap dengan maksud pencarian, tahap funnel, skor peluang, dan turunan tiap keyword.
+Semua sumber data **gratis**; volume pencarian dan keyword difficulty tidak tersedia (lihat "Sumber data").
 
-FastAPI + SQLite + halaman web biasa (Chart.js hanya di halaman Jelajah).
+FastAPI + SQLite + halaman web biasa (tanpa framework front-end). Login dengan akun pengguna wajib.
+
+## Mulai cepat
+
+```bash
+pip install -r requirements.txt
+python -m uvicorn app.main:app          # buka http://127.0.0.1:8000, klik "Buat akun", lalu mulai mencari
+```
+
+Tanpa jaringan atau untuk mencoba tampilan: centang **Pakai data contoh** di halaman utama. Untuk pengembangan lokal tanpa
+login: `TRENDWATCH_AUTH=off`. Tes: `pip install -r requirements-dev.txt && python -m pytest -q`.
 
 ## Halaman
 
-Halaman lain (Tren hari ini, Daily Discovery, Booming per topik, Riset topik, Jelajah keyword) dihapus dari antarmuka; hanya Keyword research yang tersisa. API `/api/booming`, `/api/research`, `/api/explore`, `/api/research/save`, perintah `discover`/`collect`, dan workflow GitHub Actions tetap ada dan bisa dipakai tanpa halaman.
+Antarmuka hanya memiliki halaman di bawah ini, ditambah halaman akun (`/login`, `/daftar`, `/lupa`, `/reset`, `/akun`).
+Fitur lain (booming per topik, riset topik, jelajah, Daily Discovery, tren harian) tetap tersedia sebagai **API dan perintah CLI**
+tanpa halaman: `/api/booming`, `/api/research`, `/api/explore`, `/api/research/save`, perintah `collect`/`discover`, dan
+workflow GitHub Actions. Bagian "Cara kerja" di bawah menjelaskan mesin itu.
 
 | Halaman | Alamat | Fungsi |
 |---|---|---|
 | **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik 7 hari, naik 90 hari, permintaan relatif). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. **Klik nama keyword** (mis. "cpns 2027") untuk melihat turunannya ("kapan cpns 2027 dibuka", "info cpns 2027", "jadwal cpns 2027", ...) dari saran pencarian, lengkap dengan maksud dan skor. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
 
-### Cara kerja "Riset topik"
+### Mesin di belakang layar: "Riset topik" (`/api/research`)
 
 Satu riset = 4 permintaan (satu per rentang waktu) + sampai 5 permintaan turunan. Semua memakai data
 *pencarian terkait* Google Trends yang sama dengan yang dilihat manual, lalu digabung:
@@ -39,7 +53,7 @@ Satu riset = 4 permintaan (satu per rentang waktu) + sampai 5 permintaan turunan
 
 Instagram dan TikTok **belum** termasuk: keduanya tidak punya sumber resmi gratis untuk keyword yang sedang naik.
 
-### Cara kerja "booming"
+### Mesin di belakang layar: "booming" (`/api/booming`)
 
 Daftar diambil dari *pencarian terkait yang sedang naik* (rising related queries) milik Google Trends:
 
