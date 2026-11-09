@@ -18,8 +18,10 @@ import time
 from . import db, explore_service, insight, suggest
 from .explore import ExploreError
 
-# (rentang waktu, nama kolom): 7 hari = momentum, 90 hari = permintaan yang bertahan.
-WINDOWS = (("now 7-d", "naik_7h"), ("today 3-m", "naik_90h"))
+# (rentang waktu, nama kolom): 24 jam = baru saja naik, 7 hari = momentum, 90 hari = permintaan yang bertahan.
+# "now 1-d" di Google Trends = 24 jam terakhir (bukan hari kalender kemarin).
+WINDOWS = (("now 1-d", "naik_24j"), ("now 7-d", "naik_7h"), ("today 3-m", "naik_90h"))
+WINDOW_LABEL = {"now 1-d": "24 jam", "now 7-d": "7 hari", "today 3-m": "90 hari"}
 DEPTHS = ("cepat", "lengkap")
 WEIGHTS = {"momentum": 35, "permintaan": 30, "longtail": 15, "relevan": 10, "multisumber": 10}
 _QUESTION_START = {"apa", "apakah", "bagaimana", "cara", "kenapa", "mengapa", "kapan", "siapa", "dimana",
@@ -49,13 +51,13 @@ def is_question(keyword: str) -> bool:
 def score(row: dict, seed_words: set[str]) -> dict:
     """Skor keyword 0-100 yang transparan (bukan volume pencarian):
 
-    - momentum (maks 35): kenaikan tertinggi di 7 atau 90 hari (Breakout = penuh, selain itu skala logaritmik).
+    - momentum (maks 35): kenaikan tertinggi di 24 jam, 7, atau 90 hari (Breakout = penuh, selain itu skala logaritmik).
     - permintaan (maks 30): angka relatif Trends 0-100 bila ada; bila tidak, dari urutan di saran Google (1 = tertinggi).
     - longtail (maks 15): makin panjang makin spesifik (4 kata atau lebih = penuh); biasanya lebih mudah diperebutkan.
     - relevan (maks 10): memuat semua kata seed.
     - multisumber (maks 10): muncul di saran pencarian (Google/YouTube/Bing) DAN di data Trends, atau di dua saluran saran.
     """
-    gains = [g for g in (row["naik_7h"], row["naik_90h"]) if g]
+    gains = [g for g in (row.get("naik_24j"), row["naik_7h"], row["naik_90h"]) if g]
     if any(g["breakout"] for g in gains):
         momentum = WEIGHTS["momentum"]
     elif gains:
@@ -90,7 +92,7 @@ def build_rows(seed: str, suggestions: list[dict], trends: dict[str, list[dict]]
 
     def row_for(q: str) -> dict:
         return merged.setdefault(q.strip().lower(), {
-            "query": q.strip(), "ac_rank": None, "via": None, "naik_7h": None, "naik_90h": None,
+            "query": q.strip(), "ac_rank": None, "via": None, "naik_24j": None, "naik_7h": None, "naik_90h": None,
             "permintaan": None, "sumber": set()})
 
     for s in suggestions:
@@ -123,7 +125,7 @@ def build_rows(seed: str, suggestions: list[dict], trends: dict[str, list[dict]]
             "maksud": i5, "maksud_label": insight.INTENT5[i5], "tahap": insight.FUNNEL[i5],
             "format": insight.CONTENT_FORMAT[i5],
             "sumber": sorted(r["sumber"], key=list(SOURCE_LABELS).index), "ac_rank": r["ac_rank"], "via": r["via"],
-            "naik_7h": r["naik_7h"], "naik_90h": r["naik_90h"], "permintaan": r["permintaan"],
+            "naik_24j": r["naik_24j"], "naik_7h": r["naik_7h"], "naik_90h": r["naik_90h"], "permintaan": r["permintaan"],
             "relevan": seed_words <= set(_words(r["query"])),
             "skor": sc["skor"], "level": sc["level"], "skor_bagian": sc["bagian"],
             "peluang": {"skor": sc["skor"]},  # agar bisa dipakai ``insight.clusters``
@@ -138,7 +140,8 @@ def summarize(items: list[dict]) -> dict:
     count = lambda pred: sum(1 for r in items if pred(r))  # noqa: E731
     return {
         "total": len(items),
-        "naik": count(lambda r: r["naik_7h"] or r["naik_90h"]),
+        "naik": count(lambda r: r["naik_24j"] or r["naik_7h"] or r["naik_90h"]),
+        "naik_24j": count(lambda r: r["naik_24j"]),
         "pertanyaan": count(lambda r: r["pertanyaan"]),
         "longtail": count(lambda r: r["longtail"]),
         "maksud": {k: count(lambda r, k=k: r["maksud"] == k) for k in insight.INTENT5},
@@ -225,7 +228,7 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
     seed, geo, depth = normalize(seed, geo, depth)
     channels = normalize_channels(channels)
     now = time.time() if now is None else now
-    params = {"kind": "keyword", "seed": seed, "geo": geo, "depth": depth, "trends": bool(with_trends)}
+    params = {"kind": "keyword", "seed": seed, "geo": geo, "depth": depth, "trends": bool(with_trends), "win": "24j-7h-90h"}
     if channels:  # hanya bila dipakai, agar kunci cache lama tidak berubah
         params["channels"] = list(channels)
     key = None
@@ -248,7 +251,7 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
                     explore_service.normalize_booming(seed, geo, 0, time_range, "", 20),
                     demo=demo, refresh=refresh, provider=provider, now=now)
             except ExploreError as exc:
-                errors.append({"scope": f"Google Trends ({'7 hari' if time_range == 'now 7-d' else '90 hari'})",
+                errors.append({"scope": f"Google Trends ({WINDOW_LABEL[time_range]})",
                                "error": str(exc)})
                 continue
             trends[column] = res["items"]

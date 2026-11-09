@@ -120,7 +120,7 @@ flowchart LR
     U[Seed keyword] --> API["/api/keywords"]
     API --> K[keyword_research<br/>cache 6 jam]
     K --> A[suggest.py<br/>Google Autocomplete<br/>17 atau 43 permintaan]
-    K --> T[Google Trends<br/>rising 7 hari + 90 hari]
+    K --> T[Google Trends<br/>rising 24 jam + 7 hari + 90 hari]
     A --> M[Gabung per keyword<br/>+ intent, funnel, skor, kelompok]
     T --> M
     M --> R[Daftar, kelompok, funnel<br/>CSV, Daily Discovery]

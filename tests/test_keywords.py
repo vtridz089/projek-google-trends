@@ -179,7 +179,7 @@ def test_run_combines_both_sources_and_clusters():
 
 def test_trends_failure_is_partial_not_fatal_and_suggest_failure_too():
     out = kr.run_keywords("bumn", "ID", "cepat", suggester=Sug(), provider=Trends(fail=True), now=1000)
-    assert out["partial"] and {e["scope"] for e in out["errors"]} == {"Google Trends (7 hari)", "Google Trends (90 hari)"} and out["items"]
+    assert out["partial"] and {e["scope"] for e in out["errors"]} == {"Google Trends (24 jam)", "Google Trends (7 hari)", "Google Trends (90 hari)"} and out["items"]
     out2 = kr.run_keywords("bumn", "ID", "cepat", suggester=Sug(fail=True), provider=Trends(), now=1000, refresh=True)
     assert out2["partial"] and out2["errors"][0]["scope"].startswith("Saran Google") and "Saran: tunggu" in out2["errors"][0]["error"]
     assert {r["query"] for r in out2["items"]} == {"bumn baru", "bumn 2026"}
@@ -351,3 +351,45 @@ def test_api_children(client):
     assert r.status_code == 200 and r.json()["items"] and all("cpns" in i["query"] for i in r.json()["items"])
     assert client.get("/api/keywords/turunan").status_code == 400
     assert client.get("/api/keywords/turunan", params={"q": "x", "kanal": "tiktok"}).status_code == 400
+
+
+
+# --------------------------------------------------------------------------- naik 24 jam
+
+
+class Trends24(Trends):
+    """Trends tiruan: kenaikan berbeda per rentang, supaya kolom 24 jam, 7 hari, dan 90 hari bisa dibedakan."""
+    def explore(self, keywords, geo, category, time_range, gprop="", parts=()):
+        self.calls.append(time_range)
+        k = keywords[0]
+        rising = {"now 1-d": [{"query": f"{k} hari ini", "value": 1200, "label": "+1.200%"}],
+                  "now 7-d": [{"query": f"{k} minggu ini", "value": 300, "label": "+300%"}],
+                  "today 3-m": [{"query": f"{k} bulan ini", "value": 90, "label": "+90%"}]}[time_range]
+        return {"source": "google", "fetched_at": "x", "notes": [], "related": {k: {"rising": rising, "top": []}}}
+
+
+def test_windows_include_24h_and_each_column_is_filled_separately():
+    assert kr.WINDOWS[0] == ("now 1-d", "naik_24j")
+    prov = Trends24()
+    out = kr.run_keywords("bumn", "ID", "cepat", suggester=Sug(items=[]), provider=prov, now=1)
+    assert prov.calls == ["now 1-d", "now 7-d", "today 3-m"]
+    by = {r["query"]: r for r in out["items"]}
+    assert by["bumn hari ini"]["naik_24j"]["label"] == "+1.200%" and by["bumn hari ini"]["naik_7h"] is None
+    assert by["bumn minggu ini"]["naik_7h"]["value"] == 300 and by["bumn minggu ini"]["naik_24j"] is None
+    assert by["bumn bulan ini"]["naik_90h"]["value"] == 90
+    assert out["ringkasan"]["naik"] == 3 and out["ringkasan"]["naik_24j"] == 1
+
+
+def test_24h_gain_counts_for_momentum_score():
+    only_24 = kr.score(row(n7=None, n90=None), set())["bagian"]["momentum"]
+    assert only_24 == 0
+    r = row(); r["naik_24j"] = G(2000)
+    assert kr.score(r, set())["bagian"]["momentum"] > 0
+    r["naik_24j"] = G(9999, True)
+    assert kr.score(r, set())["bagian"]["momentum"] == 35
+
+
+def test_cache_key_changes_with_new_window_set():
+    sug = Sug()
+    kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends24(), now=1000)
+    assert kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends24(), now=1001)["cached"] is True

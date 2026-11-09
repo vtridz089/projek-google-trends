@@ -87,7 +87,8 @@
         <label>Urutkan
           <select id="f-sort">
             <option value="skor">Skor tertinggi</option>
-            <option value="naik">Kenaikan 7 hari</option>
+            <option value="naik24">Naik 24 jam</option>
+            <option value="naik">Kenaikan tertinggi (24 jam, 7, 90 hari)</option>
             <option value="permintaan">Permintaan relatif</option>
             <option value="abjad">A–Z</option>
           </select>
@@ -102,13 +103,13 @@
         </span>
       </div>
 
-      <div class="khead" aria-hidden="true"><span></span><span>Keyword</span><span>7 hari</span><span>90 hari</span><span>Permintaan</span><span>Skor</span><span></span></div>
+      <div class="khead" aria-hidden="true"><span></span><span>Keyword</span><span>24 jam</span><span>7 hari</span><span>90 hari</span><span>Permintaan</span><span>Skor</span><span></span></div>
       <ol class="ktable" id="list"></ol>
       <button type="button" class="morebtn" id="more" hidden></button>
 
       <details class="explain">
         <summary><b>Cara membaca tabel ini</b></summary>
-        <p><b>7 hari / 90 hari</b>: kenaikan pencarian menurut Google Trends (Breakout = lebih dari 5.000%). Tanda "–" berarti tidak tercatat naik, bukan berarti tidak dicari.</p>
+        <p><b>24 jam / 7 hari / 90 hari</b>: kenaikan pencarian menurut Google Trends. "24 jam" artinya 24 jam terakhir (bukan hari kalender kemarin) dan paling cepat menangkap topik yang baru meledak (Breakout = lebih dari 5.000%). Tanda "–" berarti tidak tercatat naik, bukan berarti tidak dicari.</p>
         <p><b>Permintaan</b>: angka <i>relatif</i> 0–100 dari Google Trends, hanya untuk keyword yang masuk daftar "populer". Bukan volume pencarian bulanan.</p>
         <p><b>Skor (0–100)</b> adalah aturan sederhana buatan kami, bukan data Google: kenaikan maks 35, permintaan maks 30
         (bila tidak ada, dari urutan di saran Google), long-tail maks 15 (4 kata atau lebih), relevan dengan seed 10, muncul di saran Google dan Trends sekaligus 10.
@@ -136,7 +137,7 @@ const TAHAP_INFO = {
   BOFU: ["BOFU · siap bertindak", "cocok untuk halaman produk atau layanan dan landing page"],
   "": ["Tanpa tahap", "tidak ada kata penanda maksud; artikel pendukung umum"],
 };
-const state = { data: null, text: "", intent: "", tahap: "", sort: "skor", naik: false, tanya: false, long: false, view: "daftar", shown: PAGE };
+const state = { data: null, text: "", intent: "", tahap: "", sort: "skor", naik: false, naik24: false, tanya: false, long: false, view: "daftar", shown: PAGE };
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
@@ -181,17 +182,19 @@ function flash(btn, ok, message) {
 }
 
 // ---- penyaringan dan pengurutan
-const best = (r) => Math.max(r.naik_7h ? (r.naik_7h.breakout ? 1e9 : r.naik_7h.value) : -1, r.naik_90h ? (r.naik_90h.breakout ? 1e9 : r.naik_90h.value) : -1);
+const gv = (g) => g ? (g.breakout ? 1e9 : g.value) : -1;
+const best = (r) => Math.max(gv(r.naik_24j), gv(r.naik_7h), gv(r.naik_90h));
 function visibleRows() {
   const d = state.data; if (!d) return [];
   const t = state.text.trim().toLowerCase();
   const rows = d.items.filter(r =>
     (!t || r.query.toLowerCase().includes(t)) && (!state.intent || r.maksud === state.intent) &&
-    (!state.tahap || r.tahap === state.tahap) && (!state.naik || r.naik_7h || r.naik_90h) &&
+    (!state.tahap || r.tahap === state.tahap) && (!state.naik || r.naik_24j || r.naik_7h || r.naik_90h) && (!state.naik24 || r.naik_24j) &&
     (!state.tanya || r.pertanyaan) && (!state.long || r.longtail));
   const by = {
     skor: (a, b) => b.skor - a.skor,
     naik: (a, b) => best(b) - best(a) || b.skor - a.skor,
+    naik24: (a, b) => gv(b.naik_24j) - gv(a.naik_24j) || b.skor - a.skor,
     permintaan: (a, b) => (b.permintaan ?? -1) - (a.permintaan ?? -1) || b.skor - a.skor,
     abjad: (a, b) => a.query.localeCompare(b.query, "id"),
   }[state.sort];
@@ -212,7 +215,7 @@ function kidRow(k, d) {
   copy.addEventListener("click", async () => flash(copy, await copyText(k.query), "“" + k.query + "” disalin"));
   const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
   dig.addEventListener("click", () => { $("seed").value = k.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
-  const g = k.naik_7h || k.naik_90h;
+  const g = k.naik_24j || k.naik_7h || k.naik_90h;
   const tags = el("span", { class: "tags" }, [el("span", { class: "pill", text: k.maksud_label })]);
   if (k.tahap) tags.append(el("span", { class: "pill tf-" + k.tahap, text: k.tahap }));
   if (g) tags.append(el("span", { class: "pill lv-tinggi", text: "naik " + (g.breakout ? "Breakout" : g.label) }));
@@ -267,10 +270,10 @@ function row(r, d) {
   if (r.pertanyaan) tags.append(el("span", { class: "pill", text: "pertanyaan" }));
   if (r.longtail) tags.append(el("span", { class: "pill", text: "long-tail" }));
   const b = r.skor_bagian;
-  const score = el("span", { class: "cell c4" }, [el("span", { class: "wl", text: "Skor" }),
+  const score = el("span", { class: "cell c5" }, [el("span", { class: "wl", text: "Skor" }),
     el("span", { class: "pill lv-" + r.level, text: String(r.skor),
       title: "Kenaikan " + b.momentum + "/35 · Permintaan " + b.permintaan + "/30 · Long-tail " + b.longtail + "/15 · Relevan " + b.relevan + "/10 · Dua sumber " + b.multisumber + "/10" })]);
-  const demand = el("span", { class: "cell c3" + (r.permintaan != null ? " on" : ""), title: "Angka relatif 0–100 dari Google Trends, bukan volume pencarian" },
+  const demand = el("span", { class: "cell c4" + (r.permintaan != null ? " on" : ""), title: "Angka relatif 0–100 dari Google Trends, bukan volume pencarian" },
     [el("span", { class: "wl", text: "Permintaan" }), r.permintaan != null ? String(r.permintaan) : "–"]);
   const panel = el("div", { class: "kkids", hidden: "hidden" });
   const name = el("button", { type: "button", class: "keyword-link", text: r.query, "aria-expanded": "false",
@@ -284,7 +287,7 @@ function row(r, d) {
     el("span", { class: "no", text: String(r.rank) }),
     el("div", { class: "kw-wrap" }, [el("div", { class: "kw" }, [name]), tags,
       el("div", { class: "src", text: r.sumber.map(s => SOURCE_LABEL[s]).join(" · ") })]),
-    gainCell(r.naik_7h, "7 hari", 1), gainCell(r.naik_90h, "90 hari", 2), demand, score,
+    gainCell(r.naik_24j, "24 jam", 1), gainCell(r.naik_7h, "7 hari", 2), gainCell(r.naik_90h, "90 hari", 3), demand, score,
     el("div", { class: "acts" }, [copy, dig, serp]),
     panel,
   ]);
@@ -324,14 +327,14 @@ function resetPaging() { state.shown = PAGE; renderList(); }
 
 function renderChips() {
   const box = $("f-chips"); box.replaceChildren(el("span", { class: "lbl", text: "Saring cepat:" }));
-  for (const [key, label] of [["naik", "Hanya yang sedang naik"], ["tanya", "Pertanyaan"], ["long", "Long-tail (4+ kata)"]]) {
+  for (const [key, label] of [["naik24", "Naik 24 jam terakhir"], ["naik", "Hanya yang sedang naik"], ["tanya", "Pertanyaan"], ["long", "Long-tail (4+ kata)"]]) {
     const b = el("button", { type: "button", class: "chip", text: label, "aria-pressed": String(state[key]) });
     b.addEventListener("click", () => { state[key] = !state[key]; renderChips(); resetPaging(); });
     box.append(b);
   }
 }
 function render(d) {
-  state.data = d; Object.assign(state, { text: "", intent: "", tahap: "", sort: "skor", naik: false, tanya: false, long: false, view: "daftar", shown: PAGE });
+  state.data = d; Object.assign(state, { text: "", intent: "", tahap: "", sort: "skor", naik: false, naik24: false, tanya: false, long: false, view: "daftar", shown: PAGE });
   $("f-text").value = ""; $("f-sort").value = "skor"; $("f-tahap").value = "";
   const sel = $("f-intent"); sel.replaceChildren(el("option", { value: "", text: "Semua" }));
   const LABEL = { informasional: "Informasional", komersial: "Komersial", transaksional: "Transaksional", navigasi: "Navigasi", lainnya: "Lainnya" };
@@ -399,10 +402,10 @@ async function search() {
 function downloadCsv() {
   const d = state.data; if (!d) return;
   const gain = (g) => !g ? "" : g.breakout ? "Breakout (>5000)" : g.value;
-  const rows = [["Keyword", "Maksud pencarian", "Tahap funnel", "Format konten yang cocok", "Pertanyaan", "Jumlah kata", "Naik 7 hari (%)", "Naik 90 hari (%)",
+  const rows = [["Keyword", "Maksud pencarian", "Tahap funnel", "Format konten yang cocok", "Pertanyaan", "Jumlah kata", "Naik 24 jam (%)", "Naik 7 hari (%)", "Naik 90 hari (%)",
                  "Permintaan relatif (0-100)", "Skor (0-100)", "Kelompok", "Sumber", "Seed", "Wilayah"]];
   visibleRows().forEach(r => rows.push([r.query, r.maksud_label, r.tahap || "", r.format, r.pertanyaan ? "ya" : "tidak", r.words,
-    gain(r.naik_7h), gain(r.naik_90h), r.permintaan ?? "", r.skor, r.kelompok, r.sumber.map(s => SOURCE_LABEL[s]).join("; "), d.seed, geoName(d.geo)]));
+    gain(r.naik_24j), gain(r.naik_7h), gain(r.naik_90h), r.permintaan ?? "", r.skor, r.kelompok, r.sumber.map(s => SOURCE_LABEL[s]).join("; "), d.seed, geoName(d.geo)]));
   const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
   const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })),
                       download: "keyword-" + d.seed.replace(/[^\w-]+/g, "_").slice(0, 40) + ".csv" });
