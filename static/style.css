@@ -431,17 +431,33 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 .newslist a:hover { color: var(--accent); text-decoration: underline; }
 .newslist .empty { padding: 14px 0; }
 
-.histlist .hitem { padding: 9px 0; border-top: 1px solid var(--border); display: grid; gap: 3px; }
+.histlist .hitem { padding: 10px 4px; border-top: 1px solid var(--border); display: grid; gap: 4px 12px; align-items: center;
+                   grid-template-columns: minmax(0, 1fr) 110px 150px 140px 190px; justify-items: start; }
+.hhead { display: grid; gap: 4px 12px; padding: 6px 4px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border);
+         grid-template-columns: minmax(0, 1fr) 110px 150px 140px 190px; }
 .histlist .hitem:first-child { border-top: 0; }
 .hk { font-weight: 700; overflow-wrap: anywhere; }
-.hacts { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.ht { color: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; }
+.hw { display: grid; font-size: 13.5px; }
+.hacts { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: flex-end; }
 .hacts button { all: unset; cursor: pointer; color: var(--accent); font-size: 13px; }
 .hacts button:hover { text-decoration: underline; }
 .hacts button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.histlist .empty { padding: 14px 0; }
+.histlist .empty { padding: 22px 0; text-align: center; grid-column: 1 / -1; }
+@media (max-width: 820px) {
+  .hhead { display: none; }
+  .histlist .hitem { grid-template-columns: minmax(0, 1fr) auto; }
+  .histlist .hitem .hk { grid-column: 1; } .histlist .hitem > :nth-child(2) { grid-column: 2; grid-row: 1; }
+  .histlist .hitem .ht, .histlist .hitem .hw { grid-column: 1 / -1; }
+  .hacts { grid-column: 1 / -1; justify-content: flex-start; }
+}
+.ptabs { display: flex; gap: 6px; margin: 0 0 14px; border-bottom: 2px solid var(--border); }
+.ptabs button { all: unset; cursor: pointer; padding: 9px 16px; font-weight: 800; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -2px; display: inline-flex; gap: 8px; align-items: center; }
+.ptabs button:hover { color: var(--text); }
+.ptabs button[aria-selected="true"] { color: var(--brand); border-bottom-color: var(--accent); }
+.ptabs button:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; border-radius: 8px; }
 .pill.st-pill-dipakai { background: var(--up-bg); color: var(--up); }
 .pill.st-pill-tidak { background: var(--flat-bg); color: var(--flat); }
-#h-q { margin-top: 2px; }
 
 /* Penanda Dipakai / Tidak pada tiap keyword */
 .kst { margin-top: 6px; }

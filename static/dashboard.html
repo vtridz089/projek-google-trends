@@ -30,6 +30,13 @@
 
   <div class="dash">
     <main class="dmain">
+      <div class="ptabs" role="tablist" aria-label="Bagian dashboard">
+        <button type="button" role="tab" id="tab-riset-btn" aria-selected="true" aria-controls="tab-riset">Keyword research</button>
+        <button type="button" role="tab" id="tab-riwayat-btn" aria-selected="false" aria-controls="tab-riwayat">Riwayat keyword <span class="pill" id="histbadge">0</span></button>
+      </div>
+      <p id="msg" role="status"></p>
+
+      <div id="tab-riset" role="tabpanel" aria-labelledby="tab-riset-btn">
       <form id="form" class="card searchform" autocomplete="off">
         <label class="field">
           <span>Kata kunci utama (seed)</span>
@@ -65,7 +72,6 @@
         <div class="chips" id="recent" hidden></div>
       </form>
 
-      <p id="msg" role="status"></p>
       <span id="copystatus" class="sr-only" role="status" aria-live="polite"></span>
 
       <section class="card intro" id="intro">
@@ -133,6 +139,31 @@
           </details>
         </section>
       </div>
+      </div>
+
+      <div id="tab-riwayat" role="tabpanel" aria-labelledby="tab-riwayat-btn" hidden>
+        <section class="card" id="histcard">
+          <div class="cardhead">
+            <div>
+              <h2 style="margin:0" id="histtitle">Riwayat keyword</h2>
+              <div class="sub" id="histmeta"></div>
+            </div>
+            <div class="actions"><button type="button" id="hcsv">Unduh CSV</button></div>
+          </div>
+          <p class="sub" style="margin:0 0 8px">Semua keyword yang sudah ditandai Dipakai atau Tidak di platform ini, dari topik mana pun dan oleh siapa pun. Tidak perlu mencari topiknya lagi.</p>
+          <div class="ktools">
+            <span class="seg" role="group" aria-label="Saring riwayat">
+              <button type="button" id="h-all" aria-pressed="true">Semua</button>
+              <button type="button" id="h-dipakai" aria-pressed="false">Dipakai</button>
+              <button type="button" id="h-tidak" aria-pressed="false">Tidak</button>
+            </span>
+            <label>Topik <select id="h-topic"><option value="">Semua topik</option></select></label>
+            <label>Cari <input type="search" id="h-q" placeholder="cari keyword" aria-label="Cari di riwayat"></label>
+          </div>
+          <div class="hhead" aria-hidden="true"><span>Keyword</span><span>Status</span><span>Topik</span><span>Ditandai</span><span></span></div>
+          <ul class="histlist" id="histlist"></ul>
+        </section>
+      </div>
     </main>
 
     <aside class="daside">
@@ -148,23 +179,6 @@
         <p class="sub" id="newsnote" hidden></p>
       </section>
 
-      <section class="card side" id="histcard" aria-labelledby="histtitle">
-        <div class="cardhead">
-          <div>
-            <h2 style="margin:0" id="histtitle">Riwayat keyword</h2>
-            <div class="sub" id="histmeta"></div>
-          </div>
-        </div>
-        <div class="ktools" style="margin-top:0">
-          <span class="seg" role="group" aria-label="Saring riwayat">
-            <button type="button" id="h-all" aria-pressed="true">Semua</button>
-            <button type="button" id="h-dipakai" aria-pressed="false">Dipakai</button>
-            <button type="button" id="h-tidak" aria-pressed="false">Tidak</button>
-          </span>
-        </div>
-        <input type="search" id="h-q" placeholder="cari di riwayat" aria-label="Cari di riwayat" style="width:100%">
-        <ul class="histlist" id="histlist"></ul>
-      </section>
     </aside>
   </div>
 
@@ -519,42 +533,66 @@ async function loadNews(refresh) {
   } finally { btn.disabled = false; }
 }
 
-// ---- riwayat keyword (daftar di samping)
-const H = { status: "", q: "", data: null };
+// ---- riwayat keyword (satu tab sendiri; berlaku untuk seluruh platform, tidak terikat topik yang sedang dicari)
+const H = { status: "", topic: "", q: "", data: null };
 function fmtDate(s) {
   const t = Date.parse(String(s).replace(" ", "T") + "Z"); if (isNaN(t)) return "";
-  return new Date(t).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  return new Date(t).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
+const histRows = () => {
+  if (!H.data) return [];
+  const q = H.q.toLowerCase();
+  return H.data.items.filter(it => (!H.status || it.status === H.status) && (!H.topic || it.seed === H.topic) && (!q || it.keyword.toLowerCase().includes(q)));
+};
 function renderHistory() {
   const d = H.data; if (!d) return;
-  const c = d.counts;
-  $("histmeta").textContent = (c.dipakai + c.tidak) + " keyword ditandai di " + PF.name;
-  $("h-all").textContent = "Semua (" + (c.dipakai + c.tidak) + ")";
+  const c = d.counts, total = c.dipakai + c.tidak;
+  $("histbadge").textContent = String(total);
+  const rows = histRows();
+  $("histmeta").textContent = total + " keyword ditandai di " + PF.name + " · " + c.dipakai + " dipakai, " + c.tidak + " tidak dipakai" + (rows.length !== total ? " · " + rows.length + " ditampilkan" : "");
+  $("h-all").textContent = "Semua (" + total + ")";
   $("h-dipakai").textContent = "Dipakai (" + c.dipakai + ")";
   $("h-tidak").textContent = "Tidak (" + c.tidak + ")";
   for (const [id, v] of [["h-all", ""], ["h-dipakai", "dipakai"], ["h-tidak", "tidak"]]) $(id).setAttribute("aria-pressed", String(H.status === v));
-  $("histlist").replaceChildren(...(d.items.length ? d.items.map(it => {
+  const topics = [...new Set(d.items.map(it => it.seed).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+  if (H.topic && !topics.includes(H.topic)) H.topic = "";
+  $("h-topic").replaceChildren(el("option", { value: "", text: "Semua topik" }), ...topics.map(t => { const o = el("option", { value: t, text: t }); if (t === H.topic) o.selected = true; return o; }));
+  $("histlist").replaceChildren(...(rows.length ? rows.map(it => {
     const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
-    dig.addEventListener("click", () => { $("seed").value = it.keyword; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    dig.addEventListener("click", () => { showTab("riset"); $("seed").value = it.keyword; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
     const flip = el("button", { type: "button", text: it.status === "dipakai" ? "Jadi Tidak" : "Jadi Dipakai", title: "Ganti pilihan" });
     flip.addEventListener("click", () => chooseStatus(it.keyword, it.status === "dipakai" ? "tidak" : "dipakai"));
     const del = el("button", { type: "button", text: "Hapus", title: "Hapus dari riwayat" });
     del.addEventListener("click", async () => { HIST.set(keyKw(it.keyword), it.status); await chooseStatus(it.keyword, it.status); });
     return el("li", { class: "hitem" }, [
-      el("div", { class: "hk" }, [el("span", { class: "pill st-pill-" + it.status, text: STATUS_LABEL[it.status] }), " ", it.keyword]),
-      el("div", { class: "sub", text: [it.user, fmtDate(it.updated_at), it.seed ? "seed “" + it.seed + "”" : ""].filter(Boolean).join(" · ") }),
-      el("div", { class: "hacts" }, [dig, flip, del]),
+      el("span", { class: "hk", text: it.keyword }),
+      el("span", {}, [el("span", { class: "pill st-pill-" + it.status, text: STATUS_LABEL[it.status] })]),
+      el("span", { class: "ht", text: it.seed || "–", title: "Topik (seed) saat keyword ini ditandai" }),
+      el("span", { class: "hw" }, [it.user || "–", el("span", { class: "sub", text: fmtDate(it.updated_at) })]),
+      el("span", { class: "hacts" }, [dig, flip, del]),
     ]);
-  }) : [el("li", { class: "empty", text: H.status || H.q ? "Tidak ada yang cocok." : "Belum ada keyword yang ditandai. Pilih Dipakai atau Tidak pada hasil riset." })]));
+  }) : [el("li", { class: "empty", text: total ? "Tidak ada yang cocok dengan saringan." : "Belum ada keyword yang ditandai. Cari keyword di tab Keyword research, lalu pilih Dipakai atau Tidak." })]));
 }
 async function loadHistory() {
   try {
-    const p = new URLSearchParams();
-    if (H.status) p.set("status", H.status);
-    if (H.q) p.set("q", H.q);
-    H.data = await api(histUrl() + "?" + p.toString());
+    H.data = await api(histUrl() + "?limit=1000");
     renderHistory();
   } catch (err) { $("histmeta").textContent = err.message; }
+}
+function downloadHistoryCsv() {
+  const rows = [["Keyword", "Status", "Topik (seed)", "Wilayah", "Ditandai oleh", "Tanggal", "Platform"]];
+  histRows().forEach(it => rows.push([it.keyword, STATUS_LABEL[it.status], it.seed, it.geo, it.user, it.updated_at, PF.name]));
+  const text = "﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+  const a = el("a", { href: URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })), download: "riwayat-" + SLUG + ".csv" });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function showTab(name) {
+  const hist = name === "riwayat";
+  $("tab-riset").hidden = hist; $("tab-riwayat").hidden = !hist;
+  $("tab-riset-btn").setAttribute("aria-selected", String(!hist)); $("tab-riwayat-btn").setAttribute("aria-selected", String(hist));
+  try { window.history.replaceState(null, "", location.pathname + (hist ? "#riwayat" : location.search)); } catch (_) { /* abaikan */ }
+  if (hist) loadHistory();
 }
 async function loadStatuses() {
   try {
@@ -580,8 +618,12 @@ for (const v of ["daftar", "kelompok"]) $("v-" + v).addEventListener("click", ()
   renderList();
 });
 $("newsreload").addEventListener("click", () => loadNews(true));
-for (const [id, v] of [["h-all", ""], ["h-dipakai", "dipakai"], ["h-tidak", "tidak"]]) $(id).addEventListener("click", () => { H.status = v; loadHistory(); });
-let hTimer; $("h-q").addEventListener("input", (e) => { clearTimeout(hTimer); hTimer = setTimeout(() => { H.q = e.target.value.trim(); loadHistory(); }, 250); });
+for (const [id, v] of [["h-all", ""], ["h-dipakai", "dipakai"], ["h-tidak", "tidak"]]) $(id).addEventListener("click", () => { H.status = v; renderHistory(); });
+$("h-q").addEventListener("input", (e) => { H.q = e.target.value.trim(); renderHistory(); });
+$("h-topic").addEventListener("change", (e) => { H.topic = e.target.value; renderHistory(); });
+$("hcsv").addEventListener("click", downloadHistoryCsv);
+$("tab-riset-btn").addEventListener("click", () => showTab("riset"));
+$("tab-riwayat-btn").addEventListener("click", () => showTab("riwayat"));
 $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.value !== SLUG) location.assign("/p/" + encodeURIComponent(e.target.value)); });
 
 (async function init() {
@@ -599,6 +641,7 @@ $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.
     $("trybtn").addEventListener("click", () => { $("seed").value = me.news; search(); });
   }
   renderRecent(); loadNews(false); loadHistory(); loadStatuses();
+  if (location.hash === "#riwayat") showTab("riwayat");
   const u = new URLSearchParams(location.search);
   const pick = (id, v) => { if (v !== null && [...$(id).options].some(o => o.value === v)) $(id).value = v; };
   if (u.get("seed")) {
