@@ -394,3 +394,19 @@ def test_cache_key_changes_with_new_window_set():
     sug = Sug()
     kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends24(), now=1000)
     assert kr.run_keywords("bumn", "ID", "cepat", suggester=sug, provider=Trends24(), now=1001)["cached"] is True
+
+
+def test_rising_keywords_come_first_breakout_then_biggest_gain():
+    sugg = [{"query": "bumn a b c d e", "rank": 1, "via": "x"},   # panjang + populer, tapi tidak naik
+            {"query": "bumn kecil", "rank": 9, "via": "x"},
+            {"query": "bumn sedang", "rank": 9, "via": "x"},
+            {"query": "bumn meledak", "rank": 9, "via": "x"}]
+    trends = {"naik_24j": [{"query": "bumn meledak", "value": 9999, "label": "Breakout", "kind": "naik", "breakout": True}],
+              "naik_7h": [{"query": "bumn kecil", "value": 50, "label": "+50%", "kind": "naik", "breakout": False},
+                          {"query": "bumn sedang", "value": 400, "label": "+400%", "kind": "naik", "breakout": False}],
+              "naik_90h": [{"query": "bumn a b c d e", "value": 120, "label": "+120%", "kind": "populer", "breakout": False}]}
+    got = kr.build_rows("bumn", sugg, trends)
+    order = [r["query"] for r in got]
+    assert order[:3] == ["bumn meledak", "bumn sedang", "bumn kecil"] and order[3] == "bumn a b c d e"
+    assert [r["rank"] for r in got] == [1, 2, 3, 4]
+    assert kr.best_gain({"naik_24j": None, "naik_7h": None, "naik_90h": None}) is None

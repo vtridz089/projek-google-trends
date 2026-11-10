@@ -81,6 +81,14 @@ def score(row: dict, seed_words: set[str]) -> dict:
     return {"skor": total, "level": "tinggi" if total >= 65 else "sedang" if total >= 40 else "rendah", "bagian": parts}
 
 
+def best_gain(row: dict) -> float | None:
+    """Kenaikan terbesar di 24 jam/7 hari/90 hari (Breakout = tak terhingga); ``None`` bila tidak tercatat naik."""
+    gains = [g for g in (row.get("naik_24j"), row.get("naik_7h"), row.get("naik_90h")) if g]
+    if not gains:
+        return None
+    return float("inf") if any(g["breakout"] for g in gains) else float(max(g["value"] for g in gains))
+
+
 def _gain(item: dict) -> dict:
     return {"label": item["label"], "value": item["value"], "breakout": bool(item["breakout"])}
 
@@ -130,7 +138,11 @@ def build_rows(seed: str, suggestions: list[dict], trends: dict[str, list[dict]]
             "skor": sc["skor"], "level": sc["level"], "skor_bagian": sc["bagian"],
             "peluang": {"skor": sc["skor"]},  # agar bisa dipakai ``insight.clusters``
         })
-    out.sort(key=lambda r: (-r["skor"], r["query"].lower()))
+    # Yang tercatat naik di Trends selalu di atas (Breakout dulu, lalu kenaikan terbesar); sisanya menurut skor.
+    def order(r):
+        best = best_gain(r)
+        return (best is None, -(best or 0), -r["skor"], r["query"].lower())
+    out.sort(key=order)
     for i, r in enumerate(out, 1):
         r["rank"] = i
     return out
@@ -228,7 +240,7 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
     seed, geo, depth = normalize(seed, geo, depth)
     channels = normalize_channels(channels)
     now = time.time() if now is None else now
-    params = {"kind": "keyword", "seed": seed, "geo": geo, "depth": depth, "trends": bool(with_trends), "win": "24j-7h-90h"}
+    params = {"kind": "keyword", "seed": seed, "geo": geo, "depth": depth, "trends": bool(with_trends), "win": "24j-7h-90h", "urut": "naik-dulu"}
     if channels:  # hanya bila dipakai, agar kunci cache lama tidak berubah
         params["channels"] = list(channels)
     key = None

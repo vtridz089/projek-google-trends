@@ -105,7 +105,7 @@
             </label>
             <label>Urutkan
               <select id="f-sort">
-                <option value="relevan">Paling relevan</option>
+                <option value="relevan">Sedang naik dulu</option>
                 <option value="naik24">Naik 24 jam</option>
                 <option value="naik">Kenaikan tertinggi (24 jam, 7, 90 hari)</option>
                 <option value="abjad">A–Z</option>
@@ -128,7 +128,7 @@
             <summary><b>Cara membaca tabel ini</b></summary>
             <p><b>24 jam / 7 hari / 90 hari</b>: kenaikan pencarian menurut Google Trends. "24 jam" artinya 24 jam terakhir (bukan hari kalender kemarin) dan paling cepat menangkap topik yang baru meledak (Breakout = lebih dari 5.000%). Tanda "–" berarti tidak tercatat naik, bukan berarti tidak dicari.</p>
             <p><b>Maksud</b> ditebak dari kata di keyword ("harga" = transaksional, "terbaik" atau "vs" = komersial, "cara" atau "apa itu" = informasional), jadi bisa meleset. Keyword tanpa kata penanda (mis. "bumn 2026") dicatat "Lainnya".</p>
-            <p><b>Paling relevan</b> mengurutkan dengan aturan sederhana buatan kami (kenaikan di Trends, kedekatan dengan seed, keyword yang lebih spesifik). Bukan data Google dan tidak memperhitungkan persaingan (KD) karena datanya tidak tersedia.</p>
+            <p><b>Sedang naik dulu</b> (urutan bawaan): keyword yang tercatat naik di Trends ada di atas, diurutkan dari kenaikan terbesar (Breakout dulu). Keyword tanpa data kenaikan menyusul, diurutkan dengan aturan sederhana buatan kami (kedekatan dengan seed, keyword yang lebih spesifik, popularitas). Aturan itu bukan data Google dan tidak memperhitungkan persaingan (KD) karena datanya tidak tersedia.</p>
             <p><b>Dipakai / Tidak</b>: tandai keyword yang sudah atau tidak jadi Anda tulis. Klik pilihan yang sama sekali lagi untuk membatalkan. Semua pilihan tersimpan di Riwayat keyword platform ini dan dilihat oleh seluruh pengguna.</p>
           </details>
         </section>
@@ -324,7 +324,7 @@ async function loadKids(panel, r, d) {
   const local = d.items.filter(x => x.query !== r.query && hasAll(x.query, r.query));
   const merge = (fetched) => {
     const seen = new Set(local.map(x => x.query.toLowerCase()));
-    return [...local, ...fetched.filter(x => !seen.has(x.query.toLowerCase()))].sort((a, b) => b.skor - a.skor).slice(0, 30);
+    return [...local, ...fetched.filter(x => !seen.has(x.query.toLowerCase()))].sort((a, b) => best(b) - best(a) || b.skor - a.skor).slice(0, 30);
   };
   const key = [d.geo, currentKanal(), $("demo").checked, r.query].join("|");
   if (KIDS.has(key)) { showKids(panel, r, d, merge(KIDS.get(key))); return; }
