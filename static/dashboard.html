@@ -31,12 +31,37 @@
   <div class="dash">
     <main class="dmain">
       <div class="ptabs" role="tablist" aria-label="Bagian dashboard">
-        <button type="button" role="tab" id="tab-riset-btn" aria-selected="true" aria-controls="tab-riset">Keyword research</button>
+        <button type="button" role="tab" id="tab-inti-btn" aria-selected="true" aria-controls="tab-inti">Keyword inti</button>
+        <button type="button" role="tab" id="tab-riset-btn" aria-selected="false" aria-controls="tab-riset">Keyword research</button>
         <button type="button" role="tab" id="tab-riwayat-btn" aria-selected="false" aria-controls="tab-riwayat">Riwayat keyword <span class="pill" id="histbadge">0</span></button>
       </div>
       <p id="msg" role="status"></p>
 
-      <div id="tab-riset" role="tabpanel" aria-labelledby="tab-riset-btn">
+      <div id="tab-inti" role="tabpanel" aria-labelledby="tab-inti-btn">
+        <section class="card">
+          <div class="cardhead">
+            <div>
+              <h2 style="margin:0" id="coretitle">Keyword inti</h2>
+              <div class="sub" id="coremeta"></div>
+            </div>
+            <div class="actions">
+              <button type="button" class="primary" id="corerefresh" title="Ambil data terbaru dari Google Trends untuk semua keyword inti platform ini">Perbarui dari Google</button>
+              <button type="button" id="coredemo" title="Isi dengan data contoh (bukan dari Google) untuk melihat tampilannya">Data contoh</button>
+            </div>
+          </div>
+          <p class="notice" id="corenote" hidden></p>
+          <div class="chead" aria-hidden="true"><span>Keyword</span><span>Minat</span><span>Kemarin</span><span>7 hari</span><span>90 hari</span><span>Grafik 90 hari</span><span></span></div>
+          <ol class="ctable" id="corelist"></ol>
+          <details class="explain">
+            <summary><b>Cara membaca tabel ini</b></summary>
+            <p><b>Minat</b> adalah angka 0–100 dari Google Trends pada hari lengkap terakhir, dibandingkan dengan puncak keyword itu sendiri selama 90 hari. Ini <b>bukan volume pencarian</b>, dan angka antar-keyword tidak bisa dibandingkan langsung; yang bermakna adalah arah perubahannya.</p>
+            <p><b>Kemarin</b>: perubahan dibanding sehari sebelumnya. <b>7 hari</b>: rata-rata 7 hari terakhir dibanding 7 hari sebelumnya. <b>90 hari</b>: rata-rata 7 hari terakhir dibanding 7 hari pertama dalam 90 hari. Hari yang masih berjalan tidak dihitung supaya tidak terlihat anjlok. "Baru muncul" berarti sebelumnya nol.</p>
+            <p><b>Data terlalu sedikit</b>: pencarian keyword ini terlalu kecil sehingga Google tidak memberi angka. Itu bukan berarti galat. Bila pembaruan dari Google gagal, data terakhir yang berhasil tetap ditampilkan beserta tanggalnya.</p>
+          </details>
+        </section>
+      </div>
+
+      <div id="tab-riset" role="tabpanel" aria-labelledby="tab-riset-btn" hidden>
       <form id="form" class="card searchform" autocomplete="off">
         <label class="field">
           <span>Kata kunci utama (seed)</span>
@@ -249,7 +274,7 @@ function paintStatus(box) {
   for (const b of box.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.s === cur));
 }
 function paintAllStatus() { document.querySelectorAll(".st").forEach(paintStatus); }
-async function chooseStatus(q, s, box) {
+async function chooseStatus(q, s, box, topic) {
   const k = keyKw(q), cur = HIST.get(k);
   if (box) box.classList.add("busy");
   try {
@@ -258,20 +283,20 @@ async function chooseStatus(q, s, box) {
       HIST.delete(k);
     } else {
       await api(histUrl(), { method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: q, status: s, seed: state.data ? state.data.seed : "", geo: state.data ? state.data.geo : "" }) });
+        body: JSON.stringify({ keyword: q, status: s, seed: topic != null ? topic : (state.data ? state.data.seed : ""), geo: state.data ? state.data.geo : "ID" }) });
       HIST.set(k, s);
     }
     showMsg(""); paintAllStatus(); loadHistory();
   } catch (err) { showMsg(err.message, "err"); }
   finally { if (box) box.classList.remove("busy"); }
 }
-function statusControl(q) {
+function statusControl(q, topic) {
   const box = el("span", { class: "st", role: "group", "aria-label": "Riwayat untuk " + q });
   box.dataset.k = keyKw(q);
   const mk = (s, label, title) => {
     const b = el("button", { type: "button", class: "stbtn st-" + s, text: label, title });
     b.dataset.s = s;
-    b.addEventListener("click", () => chooseStatus(q, s, box));
+    b.addEventListener("click", () => chooseStatus(q, s, box, topic));
     return b;
   };
   box.append(mk("dipakai", "Dipakai", "Tandai: keyword ini dipakai (klik lagi untuk membatalkan)"),
@@ -588,11 +613,79 @@ function downloadHistoryCsv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 function showTab(name) {
-  const hist = name === "riwayat";
-  $("tab-riset").hidden = hist; $("tab-riwayat").hidden = !hist;
-  $("tab-riset-btn").setAttribute("aria-selected", String(!hist)); $("tab-riwayat-btn").setAttribute("aria-selected", String(hist));
-  try { window.history.replaceState(null, "", location.pathname + (hist ? "#riwayat" : location.search)); } catch (_) { /* abaikan */ }
-  if (hist) loadHistory();
+  for (const t of ["inti", "riset", "riwayat"]) {
+    $("tab-" + t).hidden = t !== name;
+    $("tab-" + t + "-btn").setAttribute("aria-selected", String(t === name));
+  }
+  try { window.history.replaceState(null, "", location.pathname + (name === "inti" ? "" : name === "riset" ? location.search + "#riset" : "#riwayat")); } catch (_) { /* abaikan */ }
+  if (name === "riwayat") loadHistory();
+}
+
+// ---- keyword inti (daftar tetap per platform, data Google Trends harian)
+const CORE_TOPIC = "keyword inti";
+function sparkline(values) {
+  const NS = "http://www.w3.org/2000/svg";
+  const w = 120, h = 30, svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("width", w); svg.setAttribute("height", h); svg.setAttribute("aria-hidden", "true");
+  if (values.length > 1) {
+    const max = Math.max(...values, 1), step = w / (values.length - 1);
+    const pts = values.map((v, i) => (i * step).toFixed(1) + "," + (h - 2 - (v / max) * (h - 4)).toFixed(1)).join(" ");
+    const line = document.createElementNS(NS, "polyline");
+    line.setAttribute("points", pts); line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor");
+    line.setAttribute("stroke-width", "1.8"); line.setAttribute("stroke-linejoin", "round"); line.setAttribute("stroke-linecap", "round");
+    svg.append(line);
+  }
+  return svg;
+}
+function changeCell(g, label) {
+  if (!g) return el("span", { class: "cell flat" }, [el("span", { class: "wl", text: label }), "–"]);
+  const dir = g.breakout ? "brk" : g.value > 0 ? "on" : g.value < 0 ? "down" : "flat";
+  return el("span", { class: "cell " + dir }, [el("span", { class: "wl", text: label }), g.breakout ? "Baru muncul" : g.label]);
+}
+function coreRow(it) {
+  const dig = el("button", { type: "button", text: "Riset topik ini", title: "Cari turunan keyword ini di tab Keyword research" });
+  dig.addEventListener("click", () => { showTab("riset"); $("seed").value = it.keyword.toLowerCase(); search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+  const name = el("div", { class: "kw-wrap" }, [el("div", { class: "kw" }, [el("b", { text: it.keyword })]), el("div", { class: "kst" }, [statusControl(it.keyword, CORE_TOPIC)])]);
+  const acts = el("div", { class: "acts" }, [dig]);
+  if (it.status === "ok") {
+    const spark = el("span", { class: "spark " + (it.ch_7d && !it.ch_7d.breakout && it.ch_7d.value < 0 ? "down" : "on"), title: "Minat harian 90 hari terakhir" }, [sparkline(it.series)]);
+    return el("li", { class: "crow" }, [name, el("span", { class: "cell int" }, [el("span", { class: "wl", text: "Minat" }), String(it.interest)]),
+      changeCell(it.ch_1d, "Kemarin"), changeCell(it.ch_7d, "7 hari"), changeCell(it.ch_90d, "90 hari"), spark, acts]);
+  }
+  const msg = it.status === "sedikit" ? "Data terlalu sedikit (pencarian terlalu kecil di Google Trends)"
+    : it.status === "gagal" ? "Gagal diambil" + (it.error ? ": " + it.error : "") : "Belum diambil. Klik Perbarui dari Google.";
+  return el("li", { class: "crow nodata" }, [name, el("span", { class: "cmsg " + (it.status === "gagal" ? "kerr" : "sub"), text: msg }), acts]);
+}
+const fmtStamp = (sec) => new Date(sec * 1000).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+function renderCore(d) {
+  const m = d.meta;
+  $("coretitle").textContent = "Keyword inti · " + PF.name;
+  const bits = [m.total + " keyword"];
+  if (m.updated_at) bits.push("diperbarui " + fmtStamp(m.updated_at));
+  bits.push(m.updated_at ? m.ok + " punya data" : "belum pernah diambil");
+  $("coremeta").textContent = bits.join(" · ");
+  const note = $("corenote");
+  if (m.sample) { note.textContent = "Ini data contoh (bukan dari Google), hanya untuk melihat tampilan. Klik Perbarui dari Google untuk data sebenarnya."; note.hidden = false; }
+  else if (m.updated_at && m.stale) { note.textContent = "Data sudah lebih dari 24 jam. Klik Perbarui dari Google untuk mengambil yang terbaru."; note.hidden = false; }
+  else if (!m.updated_at) { note.textContent = "Data keyword inti belum pernah diambil untuk platform ini. Klik Perbarui dari Google (sekitar 1 menit)."; note.hidden = false; }
+  else note.hidden = true;
+  $("corelist").replaceChildren(...d.items.map(coreRow));
+}
+async function loadCore() {
+  try { renderCore(await api("/api/platforms/" + encodeURIComponent(SLUG) + "/inti")); }
+  catch (err) { $("coremeta").textContent = err.message; }
+}
+async function refreshCore(demo) {
+  const b1 = $("corerefresh"), b2 = $("coredemo"), old = b1.textContent;
+  b1.disabled = b2.disabled = true; b1.textContent = demo ? "Memuat…" : "Memperbarui… (±1 menit)";
+  showMsg("");
+  try {
+    const d = await api("/api/platforms/" + encodeURIComponent(SLUG) + "/inti/refresh" + (demo ? "?demo=true" : ""), { method: "POST" });
+    renderCore(d);
+    const r = d.hasil;
+    if (r.gagal || r.dilewati) showMsg("Sebagian gagal diambil dari Google: " + r.gagal + " gagal, " + r.dilewati + " dilewati. " + (r.errors[0] || "") + " Data lama (bila ada) tetap ditampilkan.", "err");
+  } catch (err) { showMsg(err.message, "err"); }
+  finally { b1.disabled = b2.disabled = false; b1.textContent = old; }
 }
 async function loadStatuses() {
   try {
@@ -622,7 +715,10 @@ for (const [id, v] of [["h-all", ""], ["h-dipakai", "dipakai"], ["h-tidak", "tid
 $("h-q").addEventListener("input", (e) => { H.q = e.target.value.trim(); renderHistory(); });
 $("h-topic").addEventListener("change", (e) => { H.topic = e.target.value; renderHistory(); });
 $("hcsv").addEventListener("click", downloadHistoryCsv);
+$("tab-inti-btn").addEventListener("click", () => showTab("inti"));
 $("tab-riset-btn").addEventListener("click", () => showTab("riset"));
+$("corerefresh").addEventListener("click", () => refreshCore(false));
+$("coredemo").addEventListener("click", () => refreshCore(true));
 $("tab-riwayat-btn").addEventListener("click", () => showTab("riwayat"));
 $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.value !== SLUG) location.assign("/p/" + encodeURIComponent(e.target.value)); });
 
@@ -640,8 +736,9 @@ $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.
     $("trybtn").textContent = "Cari “" + me.news + "”"; $("introtry").hidden = false;
     $("trybtn").addEventListener("click", () => { $("seed").value = me.news; search(); });
   }
-  renderRecent(); loadNews(false); loadHistory(); loadStatuses();
+  renderRecent(); loadNews(false); loadHistory(); loadStatuses(); loadCore();
   if (location.hash === "#riwayat") showTab("riwayat");
+  else if (location.hash === "#riset" || new URLSearchParams(location.search).get("seed")) showTab("riset");
   const u = new URLSearchParams(location.search);
   const pick = (id, v) => { if (v !== null && [...$(id).options].some(o => o.value === v)) $(id).value = v; };
   if (u.get("seed")) {

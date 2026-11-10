@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, db, explore_service, history, keyword_research, news, platforms, users
+from . import auth, core, db, explore_service, history, keyword_research, news, platforms, users
 from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
@@ -44,6 +44,7 @@ async def lifespan(_: FastAPI):
     users.init()
     history.init()
     news.init()
+    core.init()
     log.info("Database: %s (%d akun)", db.db_path(), users.count())
     auth.seed_admin()
     csv_path = os.environ.get("TRENDWATCH_CSV", "data/snapshots.csv")
@@ -618,6 +619,24 @@ def api_platform_news(slug: str, refresh: bool = False):
         log.warning("Berita '%s' gagal: %s", p.news, exc)
         raise HTTPException(502, str(exc)) from exc
     return {"platform": p.slug, **result}
+
+
+@app.get("/api/platforms/{slug}/inti")
+def api_core_list(slug: str):
+    """Keyword inti platform ini beserta data Trends terakhir (minat, kenaikan kemarin/7/90 hari, grafik)."""
+    p = _platform(slug)
+    return {"platform": p.slug, **core.listing(p.slug)}
+
+
+@app.post("/api/platforms/{slug}/inti/refresh")
+def api_core_refresh(slug: str, demo: bool = False):
+    """Ambil ulang keyword inti dari Google Trends (±1 menit). demo=true mengisi data contoh, bukan dari Google."""
+    p = _platform(slug)
+    try:
+        result = core.refresh(p.slug, demo=demo)
+    except core.CoreBusy as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"platform": p.slug, "hasil": result, **core.listing(p.slug)}
 
 
 @app.get("/api/platforms/{slug}/riwayat")

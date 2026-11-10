@@ -140,3 +140,10 @@ flowchart LR
 - `app/platforms.py`: 15 platform (slug, nama, kata cari berita). `/platform` memilih, `/p/<slug>` menyajikan `static/dashboard.html`.
 - `app/news.py`: Google Berita RSS (`news.google.com/rss/search`, `when:7d`, bahasa/negara ID), cache tabel `news_cache` (3 jam; bila Google gagal, berita tersimpan terakhir tampil dengan penanda usang). XML dengan DOCTYPE/ENTITY ditolak dan hanya tautan http(s) yang diterima.
 - `app/history.py`: tabel `keyword_history` (unik per platform + keyword huruf kecil), status `dipakai` atau `tidak`, mencatat pengguna dan waktu. Endpoint: `GET/PUT/DELETE /api/platforms/<slug>/riwayat`, `GET .../riwayat/status`, `GET .../berita`.
+
+## 9. Keyword inti per platform
+
+- `app/core.py`: daftar tetap keyword per platform (`CORE`) dan tabel `core_trends`. Satu keyword = satu permintaan garis waktu harian `today 3-m` ke Google Trends (lewat `explore.get_provider`).
+- Perhitungan: hari yang belum selesai dibuang; kemarin = hari lengkap terakhir vs sebelumnya; 7 hari = rata-rata 7 hari terakhir vs 7 hari sebelumnya; 90 hari = 7 hari terakhir vs 7 hari pertama jendela. Dasar nol = "Baru muncul"; data terlalu sedikit ditandai sendiri.
+- Pembaruan gagal tidak menimpa data baik; berhenti setelah 2 kegagalan berturut-turut; satu pembaruan pada satu waktu (409 bila bentrok).
+- Endpoint: `GET /api/platforms/<slug>/inti`, `POST /api/platforms/<slug>/inti/refresh[?demo=true]`. Belum ada penjadwal di dalam aplikasi; jadwalkan `core-refresh` lewat cron/GitHub Actions setelah hosting ditentukan.

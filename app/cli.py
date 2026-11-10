@@ -185,6 +185,28 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_core_refresh(args: argparse.Namespace) -> int:
+    """Ambil ulang keyword inti (Google Trends). Cocok dijadwalkan harian (cron / GitHub Actions)."""
+    from . import core, platforms
+    db.init_db()
+    core.init()
+    slugs = [p.slug for p in platforms.PLATFORMS] if args.platform in (None, "all") else [args.platform]
+    bad = 0
+    for slug in slugs:
+        if slug not in core.CORE:
+            print(f"Platform tidak dikenal: {slug}")
+            return 2
+        try:
+            r = core.refresh(slug, geo=args.geo, demo=args.demo)
+        except core.CoreBusy as exc:
+            print(exc); return 1
+        print(f"{slug}: {r['diperbarui']} diperbarui, {r['gagal']} gagal, {r['dilewati']} dilewati")
+        for e in r["errors"]:
+            print("  -", e)
+        bad += r["gagal"] + r["dilewati"]
+    return 1 if bad else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="TrendWatch CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -217,6 +239,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--watchlist-csv", default=_watch_csv())
     p.add_argument("--discovery-csv", default=_disc_csv())
     p.set_defaults(func=cmd_export_discovery)
+
+    p = sub.add_parser("core-refresh", help="ambil ulang keyword inti semua platform (atau satu platform)")
+    p.add_argument("--platform", default="all", help="slug platform (mis. jadiasn) atau 'all'")
+    p.add_argument("--geo", default="ID")
+    p.add_argument("--demo", action="store_true", help="isi dengan data contoh (bukan dari Google)")
+    p.set_defaults(func=cmd_core_refresh)
 
     p = sub.add_parser("export", help="tulis database ke CSV")
     p.add_argument("--csv", default=_default_csv())
