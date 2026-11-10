@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, db, explore_service, keyword_research, users
+from . import auth, db, explore_service, history, keyword_research, news, platforms, users
 from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
@@ -42,6 +42,8 @@ async def lifespan(_: FastAPI):
     db.init_db()
     db.discovery_init()
     users.init()
+    history.init()
+    news.init()
     log.info("Database: %s (%d akun)", db.db_path(), users.count())
     auth.seed_admin()
     csv_path = os.environ.get("TRENDWATCH_CSV", "data/snapshots.csv")
@@ -583,9 +585,96 @@ def api_discovery_run(refresh: bool = False):
     return report
 
 
+# ------------------------------------------------------------------
+# Platform: pilih platform, dashboard per platform, berita, riwayat keyword
+# ------------------------------------------------------------------
+
+class HistoryBody(BaseModel):
+    keyword: str = ""
+    status: str = ""
+    seed: str = ""
+    geo: str = ""
+
+
+def _platform(slug: str) -> platforms.Platform:
+    p = platforms.get(slug)
+    if not p:
+        raise HTTPException(404, "Platform tidak ditemukan.")
+    return p
+
+
+@app.get("/api/platforms")
+def api_platforms():
+    return {"items": [platforms.public(p) for p in platforms.PLATFORMS]}
+
+
+@app.get("/api/platforms/{slug}/berita")
+def api_platform_news(slug: str, refresh: bool = False):
+    """Berita terbaru platform ini dari Google Berita (kata cari: lihat app/platforms.py). Diperbarui otomatis tiap beberapa jam."""
+    p = _platform(slug)
+    try:
+        result = news.get_news(p.news, refresh=refresh)
+    except news.NewsError as exc:
+        log.warning("Berita '%s' gagal: %s", p.news, exc)
+        raise HTTPException(502, str(exc)) from exc
+    return {"platform": p.slug, **result}
+
+
+@app.get("/api/platforms/{slug}/riwayat")
+def api_history_list(slug: str, status: str = "", q: str = "", limit: int = Query(500, ge=1, le=1000)):
+    p = _platform(slug)
+    try:
+        return {"platform": p.slug, **history.listing(p.slug, status, q, limit)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/platforms/{slug}/riwayat/status")
+def api_history_statuses(slug: str):
+    """Peta {keyword huruf kecil: status} untuk menandai hasil riset keyword di dashboard."""
+    p = _platform(slug)
+    return {"platform": p.slug, "items": history.statuses(p.slug)}
+
+
+@app.put("/api/platforms/{slug}/riwayat")
+def api_history_set(slug: str, body: HistoryBody, request: Request):
+    """Tandai satu keyword 'dipakai' atau 'tidak' (menggantikan pilihan sebelumnya)."""
+    p = _platform(slug)
+    user = request.state.user or {}
+    try:
+        item = history.set_status(p.slug, body.keyword, body.status, seed=body.seed, geo=body.geo,
+                                  user_id=user.get("id"), user_name=user.get("name", ""))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"platform": p.slug, "item": item}
+
+
+@app.delete("/api/platforms/{slug}/riwayat")
+def api_history_clear(slug: str, keyword: str = ""):
+    """Hapus pilihan satu keyword dari riwayat (kembali ke belum dipilih)."""
+    p = _platform(slug)
+    try:
+        removed = history.clear(p.slug, keyword)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"platform": p.slug, "removed": removed}
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC_DIR / "keyword.html")
+    return RedirectResponse("/platform", status_code=303)
+
+
+@app.get("/platform")
+def platform_picker():
+    return FileResponse(STATIC_DIR / "platform.html")
+
+
+@app.get("/p/{slug}")
+def platform_dashboard(slug: str):
+    if not platforms.get(slug):
+        return RedirectResponse("/platform", status_code=303)
+    return FileResponse(STATIC_DIR / "dashboard.html")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

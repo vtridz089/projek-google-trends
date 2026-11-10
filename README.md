@@ -2,7 +2,8 @@
 
 Aplikasi web **keyword research** untuk proyek PKL (nama kode di repo: TrendWatch). Ketik satu kata kunci (misalnya
 **cpns**) dan dapatkan ratusan ide keyword dari Google Autocomplete (opsional YouTube dan Bing) yang digabung dengan
-data Google Trends, lengkap dengan maksud pencarian, tahap funnel, skor peluang, dan turunan tiap keyword.
+data Google Trends, lengkap dengan maksud pencarian dan turunan tiap keyword. Setelah login, pengguna memilih salah satu dari 15
+platform; tiap platform punya dashboard berisi riset keyword, berita Google Berita, dan riwayat keyword (Dipakai/Tidak).
 Semua sumber data **gratis**; volume pencarian dan keyword difficulty tidak tersedia (lihat "Sumber data").
 
 FastAPI + SQLite + halaman web biasa (tanpa framework front-end). Login dengan akun pengguna wajib.
@@ -26,7 +27,9 @@ workflow GitHub Actions. Bagian "Cara kerja" di bawah menjelaskan mesin itu.
 
 | Halaman | Alamat | Fungsi |
 |---|---|---|
-| **Keyword research** | `/` | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik **24 jam terakhir**, 7 hari, dan 90 hari, serta permintaan relatif; ada saringan "Naik 24 jam terakhir" untuk melihat hanya yang baru meledak). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi), **tahap funnel** (TOFU/MOFU/BOFU), saran format konten, dan **skor peluang** 0-100. **Klik nama keyword** (mis. "cpns 2027") untuk melihat turunannya ("kapan cpns 2027 dibuka", "info cpns 2027", "jadwal cpns 2027", ...) dari saran pencarian, lengkap dengan maksud dan skor. Tersedia tampilan daftar, kelompok topik, dan funnel; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
+| **Pilih platform** | `/platform` | Setelah login, pengguna memilih salah satu dari **15 platform** (JagoUKP, JadiASN, JadiBUMN, JadiCerebrum, JadiPPPK, JadiPRAJURIT, JadiPOLISI, JadiPCPM, JagoTPA, JadiBEASISWA, JadiSEKDIN, Psikoteskerja, ToeflAcademy, JadiOJK, JadiPPG). Daftarnya ada di `app/platforms.py`. `/` mengalihkan ke sini. |
+| **Dashboard platform** | `/p/<platform>` (mis. `/p/jadiasn`) | Satu dashboard per platform, bisa pindah ke platform lain lewat pemilih di atas. Isinya: **Keyword research** (di bawah), **Berita terbaru** dari Google Berita (RSS gratis; kata cari per platform, mis. JadiASN = "ASN", Psikoteskerja = "Psikotes kerja", ToeflAcademy = "TOEFL"; diperbarui otomatis tiap 3 jam, ubah dengan `TRENDWATCH_NEWS_TTL_HOURS`), dan **Riwayat keyword**. Pada tiap keyword pengguna memilih **Dipakai** atau **Tidak**; pilihan masuk ke riwayat platform itu (dipakai bersama tim, tercatat siapa dan kapan), bisa diganti, dibatalkan, disaring, dan ikut di CSV. |
+| **Keyword research** | di dalam dashboard platform | Ketik satu *seed keyword*, dapatkan ratusan keyword turunan dari **Google Autocomplete** (huruf a-z, awalan "apa itu/cara/harga", akhiran "terbaik/2026"; opsional ditambah **saran YouTube dan Bing**, gratis tanpa kunci), digabung dengan data **Google Trends** (naik **24 jam terakhir**, 7 hari, dan 90 hari, serta permintaan relatif; ada saringan "Naik 24 jam terakhir" untuk melihat hanya yang baru meledak). Tiap keyword diberi **maksud pencarian** (informasional, komersial, transaksional, navigasi) dan saran format konten (tabel tidak lagi menampilkan kolom permintaan, skor, dan tahap funnel; urutan "Paling relevan" memakai aturan internal). **Klik nama keyword** (mis. "cpns 2027") untuk melihat turunannya ("kapan cpns 2027 dibuka", "info cpns 2027", "jadwal cpns 2027", ...) dari saran pencarian, lengkap dengan maksud. Tersedia tampilan daftar dan kelompok topik; bisa disalin, diunduh CSV, dan disimpan ke Daily Discovery. **Tidak ada volume pencarian dan keyword difficulty**: keduanya tidak tersedia gratis dan sengaja tidak dikarang. |
 
 ### Mesin di belakang layar: "Riset topik" (`/api/research`)
 

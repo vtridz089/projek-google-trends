@@ -14,7 +14,7 @@ flowchart LR
     A -->|commit| F[data/snapshots.csv]
     F -->|impor saat start| D
     D --> API[FastAPI<br/>main.py]
-    API --> UI[Halaman<br/>static/keyword.html]
+    API --> UI[Halaman<br/>static/dashboard.html]
     API -->|/api/export.csv| X[Unduhan CSV / Excel]
 ```
 
@@ -133,3 +133,10 @@ flowchart LR
 - **Saluran tambahan** (opsional, `kanal=youtube,bing`): saran pencarian YouTube (`ds=yt`) dan Bing (`osjson.aspx`), masing-masing ±17 permintaan. Gagal satu saluran tidak membatalkan hasil.
 - **Turunan satu keyword** (`/api/keywords/turunan?q=cpns 2027`, dipanggil saat nama keyword diklik): Autocomplete dijalankan lagi dengan keyword itu sebagai seed (±17 permintaan, cache 6 jam), hanya saran yang memuat semua katanya yang dipakai. Hasil yang sudah ada di daftar ikut ditampilkan lebih dulu.
 - **Tidak tersedia**: volume pencarian, keyword difficulty, dan data Instagram/TikTok (tidak ada sumber gratis resmi).
+
+
+## 8. Platform, berita, dan riwayat keyword
+
+- `app/platforms.py`: 15 platform (slug, nama, kata cari berita). `/platform` memilih, `/p/<slug>` menyajikan `static/dashboard.html`.
+- `app/news.py`: Google Berita RSS (`news.google.com/rss/search`, `when:7d`, bahasa/negara ID), cache tabel `news_cache` (3 jam; bila Google gagal, berita tersimpan terakhir tampil dengan penanda usang). XML dengan DOCTYPE/ENTITY ditolak dan hanya tautan http(s) yang diterima.
+- `app/history.py`: tabel `keyword_history` (unik per platform + keyword huruf kecil), status `dipakai` atau `tidak`, mencatat pengguna dan waktu. Endpoint: `GET/PUT/DELETE /api/platforms/<slug>/riwayat`, `GET .../riwayat/status`, `GET .../berita`.

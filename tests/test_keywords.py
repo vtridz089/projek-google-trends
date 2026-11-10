@@ -241,7 +241,8 @@ def test_api_keywords_demo_and_validation(client):
     assert client.get("/api/keywords").status_code == 400
     assert client.get("/api/keywords", params={"seed": "a, b"}).status_code == 400
     assert client.get("/api/keywords", params={"seed": "a", "depth": "dalam"}).status_code == 400
-    assert "Keyword research" in client.get("/").text and client.get("/booming").status_code == 404
+    assert "Pilih platform" in client.get("/").text and "Dashboard platform" in client.get("/p/jadiasn").text
+    assert client.get("/booming").status_code == 404
 
 
 # --------------------------------------------------------------------------- saluran tambahan (YouTube, Bing)
