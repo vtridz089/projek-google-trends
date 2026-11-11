@@ -193,3 +193,58 @@ def test_cli_core_refresh_demo(capsys):
     assert cli.main(["core-refresh", "--platform", "jadippg", "--demo"]) == 0
     assert "jadippg: 5 diperbarui" in capsys.readouterr().out
     assert cli.main(["core-refresh", "--platform", "tidak-ada"]) == 2
+
+
+# --------------------------------------------------------------------------- Trends per keyword + YouTube/Bing
+
+
+def day(v, partial=False):
+    return {"label": "x", "values": [v], "partial": partial}
+
+
+def test_timeline_gains_computes_real_changes_and_ignores_unfinished_day():
+    series = [10] * 83 + [20] * 7
+    tl = [day(v) for v in series] + [day(1, partial=True)]
+    g = core.timeline_gains(tl)
+    assert g["naik_24j"] is None            # 20 vs 20: tidak naik
+    assert g["naik_7h"]["value"] == 100 and g["naik_7h"]["label"] == "+100%"
+    assert g["naik_90h"]["value"] == 100    # 20 vs 10 di awal
+    assert core.timeline_gains([day(5)] * 5) is None       # data terlalu sedikit
+    assert core.timeline_gains([day(0)] * 90) is None      # tidak pernah dicari
+
+
+def test_enrich_marks_rising_keywords_and_reorders():
+    class P:
+        name = "x"
+        def __init__(self): self.calls = []
+        def explore(self, kws, geo, cat, tr, gprop="", parts=()):
+            self.calls.append(kws[0])
+            rising = kws[0] == "b"
+            vals = [10] * 76 + [50] * 14 if rising else [10] * 90
+            return {"timeline": [day(v) for v in vals]}
+    res = {"items": [item("a", 1), item("b", 2), item("c", 3)]}
+    out = core.enrich_with_trends(res, "ID", provider=P())
+    assert [r["query"] for r in out["items"]][0] == "b"
+    assert out["items"][0]["naik_90h"] and out["trends_cek"] == {"dicek": 3, "naik": 1}
+
+
+def test_enrich_stops_after_repeated_failures_and_keeps_result():
+    class Bad:
+        name = "x"
+        n = 0
+        def explore(self, *a, **k):
+            Bad.n += 1
+            raise ExploreError("429")
+    res = {"items": [item(str(i), i) for i in range(8)]}
+    out = core.enrich_with_trends(res, "ID", provider=Bad())
+    assert Bad.n == core.TREND_FAIL_STREAK and len(out["items"]) == 8
+    assert out["errors"][0]["scope"].startswith("Google Trends")
+
+
+def test_default_runner_uses_youtube_and_bing(monkeypatch):
+    seen = {}
+    def fake(seed, geo, depth, **kw):
+        seen.update(kw); return {"seed": seed, "items": [], "sumber": {"saran": "google"}, "errors": []}
+    monkeypatch.setattr(core.keyword_research, "run_keywords", fake)
+    core._default_runner("CPNS 2026", "ID")
+    assert seen["channels"] == ("youtube", "bing")

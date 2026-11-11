@@ -15,13 +15,18 @@ import threading
 import time
 from contextlib import closing
 
-from . import db, keyword_research
+from . import db, explore, keyword_research
 from .explore import ExploreError
 
 STALE_SECONDS = 24 * 3600
 MAX_ITEMS = 80                # keyword yang disimpan per seed (yang sedang naik berada di atas)
 MAX_CONSECUTIVE_FAILS = 2     # berhenti lebih awal bila Google/sumber gagal berturut-turut
 GEO = "ID"
+CHANNELS = ("youtube", "bing")  # saran YouTube dan Bing ikut dicari, selain Google
+TREND_PER_SEED = 8              # keyword turunan teratas yang dicek langsung ke Google Trends (garis waktu harian)
+TREND_WINDOW = "today 3-m"      # 90 hari, per hari
+TREND_MIN_POINTS = 14
+TREND_FAIL_STREAK = 3
 KEEP = ("query", "rank", "words", "pertanyaan", "longtail", "maksud", "maksud_label", "sumber",
         "naik_24j", "naik_7h", "naik_90h", "skor", "format")
 
@@ -88,8 +93,67 @@ def init() -> None:
 # --------------------------------------------------------------------------- satu seed
 
 
+def _change(new: float, old: float) -> dict | None:
+    """Perubahan dalam persen. Lama 0 dan baru > 0 = 'baru muncul' (breakout)."""
+    if old == 0:
+        return {"label": "Baru muncul", "value": 0, "breakout": True} if new > 0 else None
+    pct = round((new - old) / old * 100)
+    return {"label": f"{pct:+d}%", "value": pct, "breakout": False} if pct > 0 else None  # hanya yang naik
+
+
+def timeline_gains(timeline: list[dict]) -> dict | None:
+    """Garis waktu harian Google Trends -> kenaikan 24 jam / 7 hari / 90 hari (hanya yang naik).
+
+    Hari terakhir yang belum selesai dibuang. 24 jam = hari lengkap terakhir vs hari sebelumnya; 7 hari = rata-rata
+    7 hari terakhir vs 7 hari sebelumnya; 90 hari = rata-rata 7 hari terakhir vs 7 hari pertama dalam 90 hari.
+    ``None`` bila datanya terlalu sedikit untuk dipercaya."""
+    rows = timeline[:-1] if len(timeline) > 1 and timeline[-1].get("partial") else timeline
+    s = [int((r["values"] or [0])[0]) for r in rows]
+    if len(s) < TREND_MIN_POINTS or sum(s[-TREND_MIN_POINTS:]) == 0:
+        return None
+    mean = lambda xs: sum(xs) / len(xs)  # noqa: E731
+    return {"naik_24j": _change(s[-1], s[-2]), "naik_7h": _change(mean(s[-7:]), mean(s[-14:-7])),
+            "naik_90h": _change(mean(s[-7:]), mean(s[:7]))}
+
+
+def _rank_key(r: dict):
+    g = keyword_research.best_gain(r)
+    return (g is None, -(g if g is not None else 0), -(r.get("skor") or 0), r["query"])
+
+
+def enrich_with_trends(result: dict, geo: str, demo: bool = False, provider=None, limit: int = TREND_PER_SEED) -> dict:
+    """Cek keyword turunan teratas yang belum punya data kenaikan langsung ke Google Trends (satu permintaan per keyword),
+    lalu urutkan ulang agar yang naik di atas. Pencarian terkait Google untuk topik kecil sering kosong; garis waktu
+    per keyword memberi angka nyata. Kegagalan dicatat di ``errors`` tanpa menggagalkan riset."""
+    items = result.get("items") or []
+    todo = [r for r in items if keyword_research.best_gain(r) is None][:limit]
+    if not todo:
+        return result
+    provider = provider or explore.get_provider(demo)
+    streak = got = 0
+    for r in todo:
+        try:
+            res = provider.explore([r["query"]], geo, 0, TREND_WINDOW, "", parts=("timeline",))
+            streak = 0
+        except ExploreError as exc:
+            streak += 1
+            if streak >= TREND_FAIL_STREAK:
+                result.setdefault("errors", []).append({"scope": "Google Trends (kenaikan per keyword)", "error": str(exc)})
+                break
+            continue
+        g = timeline_gains(res.get("timeline") or [])
+        if g and any(g.values()):
+            r.update({k: v for k, v in g.items() if v})
+            r["sumber"] = sorted(set(r.get("sumber") or []) | {"naik"}, key=list(keyword_research.SOURCE_LABELS).index)
+            got += 1
+    result["trends_cek"] = {"dicek": len(todo), "naik": got}
+    items.sort(key=_rank_key)
+    return result
+
+
 def _default_runner(seed: str, geo: str, demo: bool = False) -> dict:
-    return keyword_research.run_keywords(seed, geo, "cepat", demo=demo, refresh=True)
+    result = keyword_research.run_keywords(seed, geo, "cepat", demo=demo, refresh=True, channels=CHANNELS)
+    return enrich_with_trends(result, geo, demo=demo)
 
 
 def _has_gain(r: dict) -> bool:
@@ -115,7 +179,11 @@ def _save_ok(conn, slug: str, seed: str, geo: str, result: dict, now: float) -> 
     errors = result.get("errors") or []
     summary = {"total": len(items), "naik": sum(1 for r in items if _has_gain(r)),
                "naik_24j": sum(1 for r in items if r.get("naik_24j")),
-               "baru": sum(1 for r in kept if r["baru"]), "ditampilkan": len(kept)}
+               "baru": sum(1 for r in kept if r["baru"]), "ditampilkan": len(kept),
+               "youtube": sum(1 for r in items if "youtube" in (r.get("sumber") or [])),
+               "bing": sum(1 for r in items if "bing" in (r.get("sumber") or [])),
+               "trends_cek": (result.get("trends_cek") or {}).get("dicek", 0),
+               "trends_naik": (result.get("trends_cek") or {}).get("naik", 0)}
     conn.execute("""INSERT OR REPLACE INTO core_research
         (platform, seed, geo, status, items, all_queries, summary, source, error, fetched_at)
         VALUES (?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?)""",

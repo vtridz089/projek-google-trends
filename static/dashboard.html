@@ -60,7 +60,7 @@
           <div id="seedlist" class="seedlist"></div>
           <details class="explain">
             <summary><b>Cara membaca halaman ini</b></summary>
-            <p><b>Keyword inti</b> adalah topik-topik inti platform ini. Aplikasi meriset tiap topik seperti di tab Keyword research (saran pencarian Google ditambah kenaikan Google Trends 24 jam, 7 hari, dan 90 hari), lalu menyimpan hasil terakhirnya. Klik satu topik untuk melihat keyword turunannya; yang sedang naik berada di atas.</p>
+            <p><b>Keyword inti</b> adalah topik-topik inti platform ini. Aplikasi meriset tiap topik seperti di tab Keyword research (saran pencarian Google, YouTube, dan Bing, ditambah kenaikan Google Trends 24 jam, 7 hari, dan 90 hari; keyword teratas dicek langsung ke Google Trends per keyword), lalu menyimpan hasil terakhirnya. Klik satu topik untuk melihat keyword turunannya; yang sedang naik berada di atas.</p>
             <p><b>Fokus kurun waktu</b> (Semua, 24 jam, 7 hari, 90 hari) menyaring tiap topik agar hanya menampilkan keyword yang naik dalam kurun itu, dengan kenaikan terbesar di atas; pilihan Anda diingat.</p>
             <p><b>Baru</b> menandai keyword yang tidak ada pada pembaruan sebelumnya. Tanda "–" pada kolom kenaikan berarti tidak tercatat naik di Google Trends, bukan berarti tidak dicari.</p>
             <p>Yang ditampilkan paling banyak 80 keyword per topik. Untuk daftar lengkap atau topik lain, pakai tombol <b>Riset lebih dalam</b>. Bila pembaruan dari Google gagal, hasil terakhir yang berhasil tetap ditampilkan beserta tanggalnya.</p>
@@ -652,7 +652,7 @@ function fillSeed(box, it) {
   }
   const bar = el("div", { class: "seedbar" }, [el("span", { class: "sub", text: coreWin
     ? shown.length + " keyword naik dalam " + WIN_LABEL[coreWin] + " terakhir, terbesar di atas" + (it.fetched_at ? " · diperbarui " + fmtStamp(it.fetched_at) : "")
-    : "Menampilkan " + it.items.length + " dari " + it.summary.total + " keyword · yang sedang naik di atas" + (it.fetched_at ? " · diperbarui " + fmtStamp(it.fetched_at) : "") })]);
+    : "Menampilkan " + it.items.length + " dari " + it.summary.total + " keyword · yang sedang naik di atas" + (it.summary.trends_cek ? " · " + it.summary.trends_naik + " dari " + it.summary.trends_cek + " keyword teratas dicek langsung ke Google Trends dan naik" : "") + (it.fetched_at ? " · diperbarui " + fmtStamp(it.fetched_at) : "") })]);
   const deeper = el("button", { type: "button", text: "Riset lebih dalam", title: "Buka di tab Keyword research dengan data terbaru" });
   deeper.addEventListener("click", () => openResearch(it.seed));
   bar.append(deeper);
@@ -674,7 +674,10 @@ function seedBox(it) {
     stats.append(el("span", { class: "pill" + (s.naik ? " lv-tinggi" : ""), text: s.naik + " sedang naik" }));
     if (s.naik_24j) stats.append(el("span", { class: "pill lv-tinggi", text: s.naik_24j + " naik 24 jam" }));
     if (s.baru) stats.append(el("span", { class: "pill pat-baru", text: s.baru + " baru" }));
-    if (it.error) stats.append(el("span", { class: "pill warn", text: "sebagian sumber gagal", title: it.error }));
+    if (s.youtube || s.bing) stats.append(el("span", { class: "pill", text: "YouTube " + (s.youtube || 0) + " · Bing " + (s.bing || 0), title: "Jumlah keyword dari saran YouTube dan Bing" }));
+    if (s.trends_cek) stats.append(el("span", { class: "pill" + (s.trends_naik ? " lv-tinggi" : ""), text: "Trends " + s.trends_naik + "/" + s.trends_cek, title: "Keyword teratas yang dicek langsung ke Google Trends dan tercatat naik" }));
+    if (it.error && /belum ada pencarian terkait/i.test(it.error)) stats.append(el("span", { class: "pill", text: "tanpa 'pencarian terkait' Trends", title: it.error + " Kenaikan dihitung dari garis waktu per keyword." }));
+    else if (it.error) stats.append(el("span", { class: "pill warn", text: "sebagian sumber gagal", title: it.error }));
   } else if (it.status === "gagal") stats.append(el("span", { class: "pill warn", text: "gagal diambil", title: it.error }));
   else stats.append(el("span", { class: "pill", text: "belum diambil" }));
   sum.append(stats); det.append(sum);
