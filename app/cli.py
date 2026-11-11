@@ -233,7 +233,11 @@ def cmd_trends_debug(args: argparse.Namespace) -> int:
                         body = p._get("/api/widgetdata/relatedsearches", {
                             "hl": p.hl, "tz": p.tz, "req": json.dumps(w["request"], separators=(",", ":")), "token": w["token"]})
                         print("related request:", json.dumps(w["request"])[:400])
-                        print("related raw:", body[:700].replace("\n", " "))
+                        from .explore import parse_related_google
+                        rel = parse_related_google(parse_google_json(body))
+                        print(f"TOP={len(rel['top'])} RISING={len(rel['rising'])}")
+                        print("  top:", [(r['query'], r['value']) for r in rel['top'][:6]])
+                        print("  rising:", [(r['query'], r['label']) for r in rel['rising'][:8]])
             except Exception as exc:  # noqa: BLE001 - diagnosa: tampilkan apa pun yang terjadi
                 print("GALAT:", exc)
     return 0
