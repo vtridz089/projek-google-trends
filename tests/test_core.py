@@ -246,5 +246,16 @@ def test_default_runner_uses_youtube_and_bing(monkeypatch):
     def fake(seed, geo, depth, **kw):
         seen.update(kw); return {"seed": seed, "items": [], "sumber": {"saran": "google"}, "errors": []}
     monkeypatch.setattr(core.keyword_research, "run_keywords", fake)
+    monkeypatch.setattr(core, "trends_related", lambda *a, **k: {})
     core._default_runner("CPNS 2026", "ID")
     assert seen["channels"] == ("youtube", "bing")
+
+
+def test_trends_related_is_saved_per_window_for_display():
+    terkait = {"24j": [{"query": "formasi cpns 2026", "kind": "populer", "label": "100", "value": 100, "breakout": False}],
+               "7h": [], "90h": []}
+    def runner(seed, geo, demo=False):
+        return {"seed": seed, "items": [item("x", 1)], "sumber": {"saran": "google"}, "errors": [], "trends_terkait": terkait}
+    core.refresh("jadippg", runner=runner)
+    first = core.listing("jadippg")["items"][0]
+    assert first["summary"]["terkait"]["24j"][0]["query"] == "formasi cpns 2026" and first["summary"]["terkait"]["7h"] == []

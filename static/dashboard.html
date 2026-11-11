@@ -643,11 +643,26 @@ function winItems(it) {
   if (!coreWin) return it.items;
   return it.items.filter(r => winGain(r, coreWin)).sort((a, b) => winVal(b, coreWin) - winVal(a, coreWin) || a.rank - b.rank);
 }
+// Pencarian terkait Google Trends (Top dan Naik) untuk kurun waktu terpilih, sama seperti di trends.google.com.
+function trendsPanel(it) {
+  const w = coreWin || "24j", list = ((it.summary || {}).terkait || {})[w];
+  const top = (list || []).filter(r => r.kind !== "naik"), rise = (list || []).filter(r => r.kind === "naik");
+  const wrap = el("div", { class: "trel" }, [el("b", { text: "Pencarian terkait di Google Trends · " + WIN_LABEL[w] })]);
+  if (!list || !list.length) {
+    wrap.append(el("p", { class: "sub", text: "Google tidak mengembalikan pencarian terkait untuk topik ini dalam " + WIN_LABEL[w] + " terakhir (pencariannya terlalu kecil); hasil yang sama akan terlihat di trends.google.com. Coba kurun waktu lain di atas." }));
+    return wrap;
+  }
+  const col = (title, rows, fmt) => el("div", {}, [el("span", { class: "sub", text: title }), rows.length
+    ? el("ol", { class: "trlist" }, rows.map(r => el("li", {}, [el("span", { text: r.query }), el("span", { class: "pill" + (r.kind === "naik" ? " lv-tinggi" : ""), text: fmt(r) })])))
+    : el("p", { class: "sub", text: "Tidak ada." })]);
+  wrap.append(el("div", { class: "trcols" }, [col("Top (skor 0–100)", top, r => String(r.value)), col("Sedang naik", rise, r => r.breakout ? "Breakout" : r.label)]));
+  return wrap;
+}
 function fillSeed(box, it) {
   const shown = winItems(it);
   const d = { seed: it.seed, geo: "ID", items: shown };
   if (coreWin && !shown.length) {
-    box.replaceChildren(el("p", { class: "sub", text: "Tidak ada keyword turunan yang tercatat naik dalam " + WIN_LABEL[coreWin] + " terakhir untuk topik ini. Pilih “Semua” untuk melihat seluruh keyword." }));
+    box.replaceChildren(trendsPanel(it), el("p", { class: "sub", text: "Tidak ada keyword turunan yang tercatat naik dalam " + WIN_LABEL[coreWin] + " terakhir untuk topik ini. Pilih “Semua” untuk melihat seluruh keyword." }));
     return;
   }
   const bar = el("div", { class: "seedbar" }, [el("span", { class: "sub", text: coreWin
@@ -658,7 +673,7 @@ function fillSeed(box, it) {
   bar.append(deeper);
   const head = el("div", { class: "khead", "aria-hidden": "true" }, ["", "Keyword", "24 jam", "7 hari", "90 hari", ""].map(t => el("span", { text: t })));
   const list = el("ol", { class: "ktable" }, shown.map(r => row(r, d)));
-  box.replaceChildren(bar, head, list);
+  box.replaceChildren(trendsPanel(it), bar, head, list);
 }
 function seedBox(it) {
   const det = el("details", { class: "seedbox" });

@@ -151,8 +151,26 @@ def enrich_with_trends(result: dict, geo: str, demo: bool = False, provider=None
     return result
 
 
+def trends_related(seed: str, geo: str, demo: bool = False) -> dict:
+    """Pencarian terkait Google Trends per kurun waktu persis seperti di trends.google.com (Top dan Naik),
+    diambil dari cache hasil riset yang baru saja dijalankan (tanpa permintaan baru ke Google bila masih segar).
+    Kurun yang kosong dicatat sebagai daftar kosong (Google memang tidak memberi data untuk topik kecil)."""
+    from . import explore_service
+    out: dict[str, list[dict]] = {}
+    for time_range, column in keyword_research.WINDOWS:
+        key = column.replace("naik_", "")
+        try:
+            res = explore_service.run_booming(explore_service.normalize_booming(seed, geo, 0, time_range, "", 20), demo=demo)
+            out[key] = [{"query": i["query"], "kind": i["kind"], "label": i["label"], "value": i["value"],
+                         "breakout": bool(i.get("breakout"))} for i in res["items"]]
+        except (ExploreError, ValueError):
+            out[key] = []
+    return out
+
+
 def _default_runner(seed: str, geo: str, demo: bool = False) -> dict:
     result = keyword_research.run_keywords(seed, geo, "cepat", demo=demo, refresh=True, channels=CHANNELS)
+    result["trends_terkait"] = trends_related(seed, geo, demo)
     return enrich_with_trends(result, geo, demo=demo)
 
 
@@ -183,7 +201,8 @@ def _save_ok(conn, slug: str, seed: str, geo: str, result: dict, now: float) -> 
                "youtube": sum(1 for r in items if "youtube" in (r.get("sumber") or [])),
                "bing": sum(1 for r in items if "bing" in (r.get("sumber") or [])),
                "trends_cek": (result.get("trends_cek") or {}).get("dicek", 0),
-               "trends_naik": (result.get("trends_cek") or {}).get("naik", 0)}
+               "trends_naik": (result.get("trends_cek") or {}).get("naik", 0),
+               "terkait": result.get("trends_terkait") or {}}
     conn.execute("""INSERT OR REPLACE INTO core_research
         (platform, seed, geo, status, items, all_queries, summary, source, error, fetched_at)
         VALUES (?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?)""",
