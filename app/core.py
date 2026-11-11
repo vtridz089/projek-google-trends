@@ -1,8 +1,11 @@
-"""Keyword inti per platform: daftar tetap yang dipantau lewat Google Trends (minat 0-100 per hari, 90 hari).
+"""Keyword inti per platform: topik-topik inti yang diriset otomatis untuk mencari keyword turunannya.
 
-Satu keyword = satu permintaan ke Google Trends (garis waktu harian). Hasilnya disimpan di tabel ``core_trends``
-sehingga halaman tidak perlu memanggil Google setiap dibuka. Pembaruan dijalankan lewat tombol di dashboard atau
-``python -m app.cli core-refresh`` (cocok untuk dijadwalkan harian). Pembaruan yang gagal tidak menimpa data lama.
+Setiap keyword inti diperlakukan sebagai seed riset: aplikasi menjalankan riset keyword yang sama dengan tab
+Keyword research (saran pencarian Google + kenaikan Google Trends 24 jam / 7 hari / 90 hari) lalu menyimpan hasil
+terakhirnya per platform. Halaman tinggal membaca hasil tersimpan itu, jadi cepat dan tidak memanggil Google setiap dibuka.
+
+Pembaruan dijalankan lewat tombol di dashboard (di latar belakang, ada progres) atau
+``python -m app.cli core-refresh`` (cocok dijadwalkan harian). Pembaruan yang gagal tidak menimpa hasil lama.
 """
 from __future__ import annotations
 
@@ -11,14 +14,15 @@ import threading
 import time
 from contextlib import closing
 
-from . import db
-from .explore import ExploreError, get_provider
+from . import db, keyword_research
+from .explore import ExploreError
 
 STALE_SECONDS = 24 * 3600
-WINDOW = "today 3-m"          # 90 hari, per hari
-MIN_POINTS = 14               # kurang dari ini: data terlalu sedikit
-MAX_CONSECUTIVE_FAILS = 2     # berhenti lebih awal bila Google menolak berturut-turut
+MAX_ITEMS = 80                # keyword yang disimpan per seed (yang sedang naik berada di atas)
+MAX_CONSECUTIVE_FAILS = 2     # berhenti lebih awal bila Google/sumber gagal berturut-turut
 GEO = "ID"
+KEEP = ("query", "rank", "words", "pertanyaan", "longtail", "maksud", "maksud_label", "sumber",
+        "naik_24j", "naik_7h", "naik_90h", "skor", "format")
 
 CORE: dict[str, tuple[str, ...]] = {
     "jadiasn": ("CPNS 2026", "SOAL CPNS", "BIMBEL CPNS", "TRYOUT CPNS", "FORMASI CPNS", "BUKU CPNS",
@@ -48,6 +52,9 @@ CORE: dict[str, tuple[str, ...]] = {
 }
 
 _refresh_lock = threading.Lock()
+_job_lock = threading.Lock()
+_job: dict = {}
+_job_thread: threading.Thread | None = None
 
 
 class CoreBusy(Exception):
@@ -60,149 +67,172 @@ def keywords(slug: str) -> tuple[str, ...]:
 
 def init() -> None:
     with closing(db.connect()) as conn, conn:
+        conn.execute("DROP TABLE IF EXISTS core_trends")  # rancangan awal (angka minat per keyword), tidak dipakai lagi
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS core_trends (
-                platform   TEXT NOT NULL,
-                keyword    TEXT NOT NULL,
-                geo        TEXT NOT NULL,
-                status     TEXT NOT NULL,
-                interest   INTEGER,
-                ch_1d      TEXT,
-                ch_7d      TEXT,
-                ch_90d     TEXT,
-                series     TEXT NOT NULL DEFAULT '[]',
-                last_day   TEXT NOT NULL DEFAULT '',
-                source     TEXT NOT NULL DEFAULT '',
-                error      TEXT NOT NULL DEFAULT '',
-                fetched_at REAL NOT NULL,
-                PRIMARY KEY (platform, keyword, geo)
+            CREATE TABLE IF NOT EXISTS core_research (
+                platform    TEXT NOT NULL,
+                seed        TEXT NOT NULL,
+                geo         TEXT NOT NULL,
+                status      TEXT NOT NULL,
+                items       TEXT NOT NULL DEFAULT '[]',
+                all_queries TEXT NOT NULL DEFAULT '[]',
+                summary     TEXT NOT NULL DEFAULT '{}',
+                source      TEXT NOT NULL DEFAULT '',
+                error       TEXT NOT NULL DEFAULT '',
+                fetched_at  REAL NOT NULL,
+                PRIMARY KEY (platform, seed, geo)
             )""")
 
 
-# --------------------------------------------------------------------------- perhitungan
+# --------------------------------------------------------------------------- satu seed
 
 
-def _mean(xs: list[float]) -> float:
-    return sum(xs) / len(xs)
+def _default_runner(seed: str, geo: str, demo: bool = False) -> dict:
+    return keyword_research.run_keywords(seed, geo, "cepat", demo=demo, refresh=True)
 
 
-def change(new: float, old: float) -> dict | None:
-    """Perubahan baru terhadap lama dalam persen. Lama 0 dan baru > 0 = 'baru muncul' (breakout)."""
-    if old == 0:
-        return {"value": None, "label": "Baru muncul", "breakout": True} if new > 0 else None
-    pct = round((new - old) / old * 100)
-    return {"value": pct, "label": f"{pct:+d}%", "breakout": False}
+def _has_gain(r: dict) -> bool:
+    return bool(r.get("naik_24j") or r.get("naik_7h") or r.get("naik_90h"))
 
 
-def metrics(timeline: list[dict]) -> dict:
-    """Garis waktu harian Trends -> minat terbaru dan perubahan kemarin / 7 hari / 90 hari.
-
-    Titik terakhir yang masih 'partial' (hari belum selesai) dibuang supaya tidak terlihat anjlok.
-    - kemarin : hari lengkap terakhir dibanding hari sebelumnya
-    - 7 hari  : rata-rata 7 hari terakhir dibanding 7 hari sebelumnya
-    - 90 hari : rata-rata 7 hari terakhir dibanding 7 hari pertama dalam jendela 90 hari
-    """
-    rows = timeline[:-1] if len(timeline) > 1 and timeline[-1].get("partial") else timeline
-    series = [int((r["values"] or [0])[0]) for r in rows]
-    if len(series) < MIN_POINTS or sum(series[-MIN_POINTS:]) == 0:
-        return {"status": "sedikit", "series": series[-90:], "interest": None, "ch_1d": None, "ch_7d": None,
-                "ch_90d": None, "last_day": rows[-1].get("label", "") if rows else ""}
-    last7, prev7, first7 = series[-7:], series[-14:-7], series[:7]
-    return {
-        "status": "ok", "series": series[-90:], "interest": series[-1], "last_day": rows[-1].get("label", ""),
-        "ch_1d": change(series[-1], series[-2]),
-        "ch_7d": change(_mean(last7), _mean(prev7)),
-        "ch_90d": change(_mean(last7), _mean(first7)),
-    }
+def _existing(conn, slug: str, seed: str, geo: str):
+    return conn.execute("SELECT * FROM core_research WHERE platform = ? AND seed = ? AND geo = ?",
+                        (slug, seed, geo)).fetchone()
 
 
-# --------------------------------------------------------------------------- simpan dan baca
+def _save_ok(conn, slug: str, seed: str, geo: str, result: dict, now: float) -> None:
+    items = result.get("items") or []
+    old = _existing(conn, slug, seed, geo)
+    prev = set(json.loads(old["all_queries"])) if old and old["status"] == "ok" else None
+    kept = []
+    for r in items[:MAX_ITEMS]:
+        row = {k: r.get(k) for k in KEEP}
+        row["baru"] = prev is not None and r["query"].lower() not in prev   # tidak ada di pembaruan sebelumnya
+        kept.append(row)
+    sumber = result.get("sumber") or {}
+    source = "mock" if "mock" in (sumber.get("saran"), sumber.get("trends")) else "google"
+    errors = result.get("errors") or []
+    summary = {"total": len(items), "naik": sum(1 for r in items if _has_gain(r)),
+               "naik_24j": sum(1 for r in items if r.get("naik_24j")),
+               "baru": sum(1 for r in kept if r["baru"]), "ditampilkan": len(kept)}
+    conn.execute("""INSERT OR REPLACE INTO core_research
+        (platform, seed, geo, status, items, all_queries, summary, source, error, fetched_at)
+        VALUES (?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?)""",
+                 (slug, seed, geo, json.dumps(kept, ensure_ascii=False),
+                  json.dumps([r["query"].lower() for r in items], ensure_ascii=False), json.dumps(summary), source,
+                  (errors[0]["error"] if errors else "")[:300], now))
 
 
-def _dump(v) -> str | None:
-    return None if v is None else json.dumps(v)
-
-
-def _load(v):
-    return None if v is None else json.loads(v)
-
-
-def _existing(conn, slug: str, kw: str, geo: str):
-    return conn.execute("SELECT * FROM core_trends WHERE platform = ? AND keyword = ? AND geo = ?",
-                        (slug, kw, geo)).fetchone()
-
-
-def _save_ok(conn, slug, kw, geo, m, source, now):
-    conn.execute("""INSERT OR REPLACE INTO core_trends
-        (platform, keyword, geo, status, interest, ch_1d, ch_7d, ch_90d, series, last_day, source, error, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)""",
-                 (slug, kw, geo, m["status"], m["interest"], _dump(m["ch_1d"]), _dump(m["ch_7d"]), _dump(m["ch_90d"]),
-                  json.dumps(m["series"]), m["last_day"], source, now))
-
-
-def _save_fail(conn, slug, kw, geo, message, now):
-    old = _existing(conn, slug, kw, geo)
-    if old and old["status"] == "ok":  # data lama yang baik tidak ditimpa
-        conn.execute("UPDATE core_trends SET error = ? WHERE platform = ? AND keyword = ? AND geo = ?",
-                     (message[:300], slug, kw, geo))
+def _save_fail(conn, slug: str, seed: str, geo: str, message: str, now: float) -> None:
+    old = _existing(conn, slug, seed, geo)
+    if old and old["status"] == "ok":  # hasil lama yang baik tidak ditimpa
+        conn.execute("UPDATE core_research SET error = ? WHERE platform = ? AND seed = ? AND geo = ?",
+                     (message[:300], slug, seed, geo))
     else:
-        conn.execute("""INSERT OR REPLACE INTO core_trends
-            (platform, keyword, geo, status, series, source, error, fetched_at) VALUES (?, ?, ?, 'gagal', '[]', '', ?, ?)""",
-                     (slug, kw, geo, message[:300], now))
+        conn.execute("""INSERT OR REPLACE INTO core_research (platform, seed, geo, status, error, fetched_at)
+                        VALUES (?, ?, ?, 'gagal', ?, ?)""", (slug, seed, geo, message[:300], now))
 
 
-def refresh(slug: str, *, geo: str = GEO, demo: bool = False, provider=None, now: float | None = None) -> dict:
-    """Ambil ulang semua keyword inti satu platform. Gagal pada satu keyword tidak menghentikan yang lain,
-    kecuali Google menolak beberapa kali berturut-turut (berhenti agar tidak memperparah pembatasan)."""
-    kws = keywords(slug)
-    if not kws:
+def refresh(slug: str, *, geo: str = GEO, demo: bool = False, runner=None, now: float | None = None,
+            progress=None) -> dict:
+    """Riset ulang semua keyword inti satu platform, berurutan. Gagal pada satu seed tidak menghentikan yang lain,
+    kecuali gagal berturut-turut (berhenti agar tidak memperparah pembatasan)."""
+    seeds = keywords(slug)
+    if not seeds:
         raise KeyError(slug)
     if not _refresh_lock.acquire(blocking=False):
         raise CoreBusy("Pembaruan lain sedang berjalan. Coba lagi sebentar.")
     try:
-        provider = provider or get_provider(demo=demo)
+        runner = runner or _default_runner
         now = time.time() if now is None else now
         done = failed = skipped = 0
         errors: list[str] = []
         streak = 0
         with closing(db.connect()) as conn:
-            for i, kw in enumerate(kws):
+            for i, seed in enumerate(seeds):
                 if streak >= MAX_CONSECUTIVE_FAILS:
-                    skipped = len(kws) - i
+                    skipped = len(seeds) - i
                     break
+                if progress:
+                    progress(i, len(seeds), seed)
                 try:
-                    res = provider.explore([kw], geo, 0, WINDOW, "", parts=("timeline",))
-                    m = metrics(res.get("timeline") or [])
+                    result = runner(seed, geo, demo=demo)
                     with conn:
-                        _save_ok(conn, slug, kw, geo, m, res.get("source") or provider.name, now)
+                        _save_ok(conn, slug, seed, geo, result, now)
                     done += 1; streak = 0
                 except ExploreError as exc:
                     failed += 1; streak += 1
-                    errors.append(f"{kw}: {exc}")
+                    errors.append(f"{seed}: {exc}")
                     with conn:
-                        _save_fail(conn, slug, kw, geo, str(exc), now)
+                        _save_fail(conn, slug, seed, geo, str(exc), now)
+        if progress:
+            progress(len(seeds), len(seeds), "")
         return {"diperbarui": done, "gagal": failed, "dilewati": skipped, "errors": errors[:5]}
     finally:
         _refresh_lock.release()
 
 
+# --------------------------------------------------------------------------- latar belakang + progres
+
+
+def start_refresh(slug: str, *, geo: str = GEO, demo: bool = False, runner=None) -> dict:
+    """Mulai pembaruan di latar belakang (±10-20 detik per keyword inti dari Google). Cek ``job_state`` untuk progres."""
+    global _job_thread
+    if not keywords(slug):
+        raise KeyError(slug)
+    with _job_lock:
+        if _refresh_lock.locked() or _job.get("running"):
+            raise CoreBusy("Pembaruan lain sedang berjalan. Coba lagi sebentar.")
+        _job.clear()
+        _job.update({"platform": slug, "running": True, "done": 0, "total": len(keywords(slug)), "current": "",
+                     "result": None, "error": "", "started": time.time()})
+
+    def progress(i, total, seed):
+        _job.update({"done": i, "total": total, "current": seed})
+
+    def work():
+        try:
+            _job["result"] = refresh(slug, geo=geo, demo=demo, runner=runner, progress=progress)
+        except Exception as exc:  # noqa: BLE001 - apa pun yang gagal harus terlihat di antarmuka
+            _job["error"] = str(exc) or exc.__class__.__name__
+        finally:
+            _job["running"] = False
+
+    _job_thread = threading.Thread(target=work, name="core-refresh", daemon=True)
+    _job_thread.start()
+    return dict(_job)
+
+
+def job_state(slug: str) -> dict | None:
+    return dict(_job) if _job.get("platform") == slug else None
+
+
+# --------------------------------------------------------------------------- baca
+
+
 def listing(slug: str, geo: str = GEO, now: float | None = None) -> dict:
     now = time.time() if now is None else now
     with closing(db.connect()) as conn:
-        rows = {r["keyword"]: r for r in conn.execute(
-            "SELECT * FROM core_trends WHERE platform = ? AND geo = ?", (slug, geo))}
+        rows = {r["seed"]: r for r in conn.execute(
+            "SELECT * FROM core_research WHERE platform = ? AND geo = ?", (slug, geo))}
     items, stamps, sources = [], [], set()
-    for kw in keywords(slug):
-        r = rows.get(kw)
+    for seed in keywords(slug):
+        r = rows.get(seed)
         if r is None:
-            items.append({"keyword": kw, "status": "belum"}); continue
-        stamps.append(r["fetched_at"]); sources.add(r["source"])
-        items.append({"keyword": kw, "status": r["status"], "interest": r["interest"], "ch_1d": _load(r["ch_1d"]),
-                      "ch_7d": _load(r["ch_7d"]), "ch_90d": _load(r["ch_90d"]), "series": json.loads(r["series"]),
-                      "last_day": r["last_day"], "source": r["source"], "error": r["error"], "fetched_at": r["fetched_at"]})
+            items.append({"seed": seed, "status": "belum", "items": [], "summary": None}); continue
+        if r["status"] == "ok":
+            stamps.append(r["fetched_at"]); sources.add(r["source"])
+        items.append({"seed": seed, "status": r["status"], "items": json.loads(r["items"]),
+                      "summary": json.loads(r["summary"]) if r["status"] == "ok" else None,
+                      "source": r["source"], "error": r["error"], "fetched_at": r["fetched_at"]})
     updated = max(stamps) if stamps else None
-    sources.discard("")
     return {"items": items, "meta": {
         "total": len(items), "ok": sum(1 for i in items if i["status"] == "ok"),
+        "naik": sum((i["summary"] or {}).get("naik", 0) for i in items),
         "updated_at": updated, "stale": updated is None or now - updated > STALE_SECONDS,
-        "sample": bool(sources) and sources <= {"mock"}, "sources": sorted(sources)}}
+        "sample": bool(sources) and sources <= {"mock"}, "job": job_state(slug), **_schedule_meta()}}
+
+
+def _schedule_meta() -> dict:
+    from . import scheduler  # impor lambat: scheduler memakai core
+    return {"jadwal": scheduler.label(), "jadwal_terakhir": scheduler.get_last() or None}

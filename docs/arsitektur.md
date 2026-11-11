@@ -143,7 +143,8 @@ flowchart LR
 
 ## 9. Keyword inti per platform
 
-- `app/core.py`: daftar tetap keyword per platform (`CORE`) dan tabel `core_trends`. Satu keyword = satu permintaan garis waktu harian `today 3-m` ke Google Trends (lewat `explore.get_provider`).
-- Perhitungan: hari yang belum selesai dibuang; kemarin = hari lengkap terakhir vs sebelumnya; 7 hari = rata-rata 7 hari terakhir vs 7 hari sebelumnya; 90 hari = 7 hari terakhir vs 7 hari pertama jendela. Dasar nol = "Baru muncul"; data terlalu sedikit ditandai sendiri.
-- Pembaruan gagal tidak menimpa data baik; berhenti setelah 2 kegagalan berturut-turut; satu pembaruan pada satu waktu (409 bila bentrok).
-- Endpoint: `GET /api/platforms/<slug>/inti`, `POST /api/platforms/<slug>/inti/refresh[?demo=true]`. Belum ada penjadwal di dalam aplikasi; jadwalkan `core-refresh` lewat cron/GitHub Actions setelah hosting ditentukan.
+- `app/core.py`: daftar tetap keyword inti per platform (`CORE`, 96 keyword). Keyword inti adalah **topik (seed)**: tiap seed diriset seperti Keyword research (saran Google/YouTube/Bing + Google Trends, mode cepat) dan hasilnya (80 keyword turunan teratas dengan kenaikan 24 jam/7 hari/90 hari, penanda "baru" dibanding riset sebelumnya) disimpan di tabel `core_research` (unik per platform + seed + negara).
+- Pembaruan gagal tidak menimpa data baik; berhenti setelah 2 kegagalan berturut-turut; satu pembaruan pada satu waktu (409 bila bentrok). Data lebih dari 24 jam ditandai usang.
+- `app/scheduler.py`: **riset otomatis tiap hari** semua 15 platform, berurutan, di dalam aplikasi. `TRENDWATCH_CORE_SCHEDULE` (bawaan `06:00`, `off` untuk mematikan), `TRENDWATCH_TZ` (bawaan `Asia/Jakarta`). Bila aplikasi menyala setelah jam itu dan hari ini belum jalan, riset langsung dijalankan (mengejar); tanggal terakhir disimpan di `app_settings` sehingga restart tidak mengulang. **Hanya berjalan selama aplikasi menyala**; pada hosting yang tidur, jadwal tidak jalan (alternatif: `python -m app.cli core-refresh` lewat cron).
+- Estimasi lama: sekitar 10 sampai 20 detik per seed, jadi seluruh 96 seed kira-kira 16 sampai 32 menit.
+- Endpoint: `GET /api/platforms/<slug>/inti`, `POST /api/platforms/<slug>/inti/refresh[?demo=true]`.

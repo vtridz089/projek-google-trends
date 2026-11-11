@@ -45,18 +45,17 @@
               <div class="sub" id="coremeta"></div>
             </div>
             <div class="actions">
-              <button type="button" class="primary" id="corerefresh" title="Ambil data terbaru dari Google Trends untuk semua keyword inti platform ini">Perbarui dari Google</button>
+              <button type="button" class="primary" id="corerefresh" title="Riset ulang semua keyword inti platform ini dari Google (beberapa menit, jalan di latar belakang)">Perbarui dari Google</button>
               <button type="button" id="coredemo" title="Isi dengan data contoh (bukan dari Google) untuk melihat tampilannya">Data contoh</button>
             </div>
           </div>
           <p class="notice" id="corenote" hidden></p>
-          <div class="chead" aria-hidden="true"><span>Keyword</span><span>Minat</span><span>Kemarin</span><span>7 hari</span><span>90 hari</span><span>Grafik 90 hari</span><span></span></div>
-          <ol class="ctable" id="corelist"></ol>
+          <div id="seedlist" class="seedlist"></div>
           <details class="explain">
-            <summary><b>Cara membaca tabel ini</b></summary>
-            <p><b>Minat</b> adalah angka 0–100 dari Google Trends pada hari lengkap terakhir, dibandingkan dengan puncak keyword itu sendiri selama 90 hari. Ini <b>bukan volume pencarian</b>, dan angka antar-keyword tidak bisa dibandingkan langsung; yang bermakna adalah arah perubahannya.</p>
-            <p><b>Kemarin</b>: perubahan dibanding sehari sebelumnya. <b>7 hari</b>: rata-rata 7 hari terakhir dibanding 7 hari sebelumnya. <b>90 hari</b>: rata-rata 7 hari terakhir dibanding 7 hari pertama dalam 90 hari. Hari yang masih berjalan tidak dihitung supaya tidak terlihat anjlok. "Baru muncul" berarti sebelumnya nol.</p>
-            <p><b>Data terlalu sedikit</b>: pencarian keyword ini terlalu kecil sehingga Google tidak memberi angka. Itu bukan berarti galat. Bila pembaruan dari Google gagal, data terakhir yang berhasil tetap ditampilkan beserta tanggalnya.</p>
+            <summary><b>Cara membaca halaman ini</b></summary>
+            <p><b>Keyword inti</b> adalah topik-topik inti platform ini. Aplikasi meriset tiap topik seperti di tab Keyword research (saran pencarian Google ditambah kenaikan Google Trends 24 jam, 7 hari, dan 90 hari), lalu menyimpan hasil terakhirnya. Klik satu topik untuk melihat keyword turunannya; yang sedang naik berada di atas.</p>
+            <p><b>Baru</b> menandai keyword yang tidak ada pada pembaruan sebelumnya. Tanda "–" pada kolom kenaikan berarti tidak tercatat naik di Google Trends, bukan berarti tidak dicari.</p>
+            <p>Yang ditampilkan paling banyak 80 keyword per topik. Untuk daftar lengkap atau topik lain, pakai tombol <b>Riset lebih dalam</b>. Bila pembaruan dari Google gagal, hasil terakhir yang berhasil tetap ditampilkan beserta tanggalnya.</p>
           </details>
         </section>
       </div>
@@ -338,11 +337,11 @@ function kidRow(k, d) {
   const copy = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin “" + k.query + "”" });
   copy.addEventListener("click", async () => flash(copy, await copyText(k.query), "“" + k.query + "” disalin"));
   const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
-  dig.addEventListener("click", () => { $("seed").value = k.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+  dig.addEventListener("click", () => openResearch(k.query));
   const g = k.naik_24j || k.naik_7h || k.naik_90h;
   const tags = el("span", { class: "tags" }, [el("span", { class: "pill", text: k.maksud_label })]);
   if (g) tags.append(el("span", { class: "pill lv-tinggi", text: "naik " + (g.breakout ? "Breakout" : g.label) }));
-  return el("li", { class: "kid" }, [el("span", { class: "kq", text: k.query }), tags, statusControl(k.query),
+  return el("li", { class: "kid" }, [el("span", { class: "kq", text: k.query }), tags, statusControl(k.query, d.seed),
     el("span", { class: "kacts" }, [copy, dig])]);
 }
 function showKids(panel, r, d, kids, loading, error) {
@@ -384,10 +383,11 @@ function row(r, d) {
   const copy = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin “" + r.query + "”" });
   copy.addEventListener("click", async () => flash(copy, await copyText(r.query), "“" + r.query + "” disalin"));
   const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
-  dig.addEventListener("click", () => { $("seed").value = r.query; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+  dig.addEventListener("click", () => openResearch(r.query));
   const serp = el("a", { href: "https://www.google.com/search?q=" + encodeURIComponent(r.query) + (d.geo ? "&gl=" + d.geo.toLowerCase() : ""),
                          target: "_blank", rel: "noopener noreferrer", text: "Google ↗", title: "Lihat hasil pencarian untuk keyword ini" });
   const tags = el("div", { class: "tags" }, [el("span", { class: "pill", text: r.maksud_label })]);
+  if (r.baru) tags.append(el("span", { class: "pill pat-baru", text: "baru" }));
   if (r.pertanyaan) tags.append(el("span", { class: "pill", text: "pertanyaan" }));
   if (r.longtail) tags.append(el("span", { class: "pill", text: "long-tail" }));
   const panel = el("div", { class: "kkids", hidden: "hidden" });
@@ -402,7 +402,7 @@ function row(r, d) {
     el("span", { class: "no", text: String(r.rank) }),
     el("div", { class: "kw-wrap" }, [el("div", { class: "kw" }, [name]), tags,
       el("div", { class: "src", text: r.sumber.map(s => SOURCE_LABEL[s]).join(" · ") }),
-      el("div", { class: "kst" }, [statusControl(r.query)])]),
+      el("div", { class: "kst" }, [statusControl(r.query, d.seed)])]),
     gainCell(r.naik_24j, "24 jam", 1), gainCell(r.naik_7h, "7 hari", 2), gainCell(r.naik_90h, "90 hari", 3),
     el("div", { class: "acts" }, [copy, dig, serp]),
     panel,
@@ -584,7 +584,7 @@ function renderHistory() {
   $("h-topic").replaceChildren(el("option", { value: "", text: "Semua topik" }), ...topics.map(t => { const o = el("option", { value: t, text: t }); if (t === H.topic) o.selected = true; return o; }));
   $("histlist").replaceChildren(...(rows.length ? rows.map(it => {
     const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
-    dig.addEventListener("click", () => { showTab("riset"); $("seed").value = it.keyword; search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    dig.addEventListener("click", () => openResearch(it.keyword));
     const flip = el("button", { type: "button", text: it.status === "dipakai" ? "Jadi Tidak" : "Jadi Dipakai", title: "Ganti pilihan" });
     flip.addEventListener("click", () => chooseStatus(it.keyword, it.status === "dipakai" ? "tidak" : "dipakai"));
     const del = el("button", { type: "button", text: "Hapus", title: "Hapus dari riwayat" });
@@ -621,71 +621,85 @@ function showTab(name) {
   if (name === "riwayat") loadHistory();
 }
 
-// ---- keyword inti (daftar tetap per platform, data Google Trends harian)
-const CORE_TOPIC = "keyword inti";
-function sparkline(values) {
-  const NS = "http://www.w3.org/2000/svg";
-  const w = 120, h = 30, svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("width", w); svg.setAttribute("height", h); svg.setAttribute("aria-hidden", "true");
-  if (values.length > 1) {
-    const max = Math.max(...values, 1), step = w / (values.length - 1);
-    const pts = values.map((v, i) => (i * step).toFixed(1) + "," + (h - 2 - (v / max) * (h - 4)).toFixed(1)).join(" ");
-    const line = document.createElementNS(NS, "polyline");
-    line.setAttribute("points", pts); line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor");
-    line.setAttribute("stroke-width", "1.8"); line.setAttribute("stroke-linejoin", "round"); line.setAttribute("stroke-linecap", "round");
-    svg.append(line);
-  }
-  return svg;
-}
-function changeCell(g, label) {
-  if (!g) return el("span", { class: "cell flat" }, [el("span", { class: "wl", text: label }), "–"]);
-  const dir = g.breakout ? "brk" : g.value > 0 ? "on" : g.value < 0 ? "down" : "flat";
-  return el("span", { class: "cell " + dir }, [el("span", { class: "wl", text: label }), g.breakout ? "Baru muncul" : g.label]);
-}
-function coreRow(it) {
-  const dig = el("button", { type: "button", text: "Riset topik ini", title: "Cari turunan keyword ini di tab Keyword research" });
-  dig.addEventListener("click", () => { showTab("riset"); $("seed").value = it.keyword.toLowerCase(); search(); window.scrollTo({ top: 0, behavior: "smooth" }); });
-  const name = el("div", { class: "kw-wrap" }, [el("div", { class: "kw" }, [el("b", { text: it.keyword })]), el("div", { class: "kst" }, [statusControl(it.keyword, CORE_TOPIC)])]);
-  const acts = el("div", { class: "acts" }, [dig]);
-  if (it.status === "ok") {
-    const spark = el("span", { class: "spark " + (it.ch_7d && !it.ch_7d.breakout && it.ch_7d.value < 0 ? "down" : "on"), title: "Minat harian 90 hari terakhir" }, [sparkline(it.series)]);
-    return el("li", { class: "crow" }, [name, el("span", { class: "cell int" }, [el("span", { class: "wl", text: "Minat" }), String(it.interest)]),
-      changeCell(it.ch_1d, "Kemarin"), changeCell(it.ch_7d, "7 hari"), changeCell(it.ch_90d, "90 hari"), spark, acts]);
-  }
-  const msg = it.status === "sedikit" ? "Data terlalu sedikit (pencarian terlalu kecil di Google Trends)"
-    : it.status === "gagal" ? "Gagal diambil" + (it.error ? ": " + it.error : "") : "Belum diambil. Klik Perbarui dari Google.";
-  return el("li", { class: "crow nodata" }, [name, el("span", { class: "cmsg " + (it.status === "gagal" ? "kerr" : "sub"), text: msg }), acts]);
-}
+// ---- keyword inti (tiap topik inti diriset otomatis; halaman membaca hasil terakhirnya)
 const fmtStamp = (sec) => new Date(sec * 1000).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+function openResearch(seed) { showTab("riset"); $("seed").value = seed.toLowerCase(); search(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+function fillSeed(box, it) {
+  const d = { seed: it.seed, geo: "ID", items: it.items };
+  const bar = el("div", { class: "seedbar" }, [el("span", { class: "sub", text: "Menampilkan " + it.items.length + " dari " + it.summary.total + " keyword · yang sedang naik di atas" + (it.fetched_at ? " · diperbarui " + fmtStamp(it.fetched_at) : "") })]);
+  const deeper = el("button", { type: "button", text: "Riset lebih dalam", title: "Buka di tab Keyword research dengan data terbaru" });
+  deeper.addEventListener("click", () => openResearch(it.seed));
+  bar.append(deeper);
+  const head = el("div", { class: "khead", "aria-hidden": "true" }, ["", "Keyword", "24 jam", "7 hari", "90 hari", ""].map(t => el("span", { text: t })));
+  const list = el("ol", { class: "ktable" }, it.items.map(r => row(r, d)));
+  box.replaceChildren(bar, head, list);
+}
+function seedBox(it) {
+  const det = el("details", { class: "seedbox" });
+  const sum = el("summary", {}, [el("b", { class: "sname", text: it.seed })]);
+  const stats = el("span", { class: "sstats" });
+  if (it.status === "ok") {
+    const s = it.summary;
+    stats.append(el("span", { class: "pill", text: s.total + " keyword" }));
+    stats.append(el("span", { class: "pill" + (s.naik ? " lv-tinggi" : ""), text: s.naik + " sedang naik" }));
+    if (s.naik_24j) stats.append(el("span", { class: "pill lv-tinggi", text: s.naik_24j + " naik 24 jam" }));
+    if (s.baru) stats.append(el("span", { class: "pill pat-baru", text: s.baru + " baru" }));
+    if (it.error) stats.append(el("span", { class: "pill warn", text: "sebagian sumber gagal", title: it.error }));
+  } else if (it.status === "gagal") stats.append(el("span", { class: "pill warn", text: "gagal diambil", title: it.error }));
+  else stats.append(el("span", { class: "pill", text: "belum diambil" }));
+  sum.append(stats); det.append(sum);
+  const body = el("div", { class: "sbody" });
+  det.append(body);
+  det.addEventListener("toggle", () => {
+    if (!det.open || body.dataset.ready) return;
+    body.dataset.ready = "1";
+    if (it.status === "ok" && it.items.length) fillSeed(body, it);
+    else body.append(el("p", { class: it.status === "gagal" ? "kerr" : "sub", text: it.status === "gagal" ? "Gagal diambil: " + it.error : "Belum diambil. Klik Perbarui dari Google di atas." }));
+  });
+  return det;
+}
 function renderCore(d) {
   const m = d.meta;
   $("coretitle").textContent = "Keyword inti · " + PF.name;
-  const bits = [m.total + " keyword"];
-  if (m.updated_at) bits.push("diperbarui " + fmtStamp(m.updated_at));
-  bits.push(m.updated_at ? m.ok + " punya data" : "belum pernah diambil");
+  const bits = [m.total + " keyword inti"];
+  if (m.updated_at) bits.push("diperbarui " + fmtStamp(m.updated_at), m.naik + " keyword turunan sedang naik");
+  else bits.push("belum pernah diriset");
+  if (m.jadwal) bits.push("riset otomatis tiap hari " + m.jadwal);
   $("coremeta").textContent = bits.join(" · ");
-  const note = $("corenote");
-  if (m.sample) { note.textContent = "Ini data contoh (bukan dari Google), hanya untuk melihat tampilan. Klik Perbarui dari Google untuk data sebenarnya."; note.hidden = false; }
-  else if (m.updated_at && m.stale) { note.textContent = "Data sudah lebih dari 24 jam. Klik Perbarui dari Google untuk mengambil yang terbaru."; note.hidden = false; }
-  else if (!m.updated_at) { note.textContent = "Data keyword inti belum pernah diambil untuk platform ini. Klik Perbarui dari Google (sekitar 1 menit)."; note.hidden = false; }
+  const note = $("corenote"), job = m.job;
+  if (job && job.running) { note.textContent = "Memperbarui " + Math.min(job.done + 1, job.total) + "/" + job.total + (job.current ? ": " + job.current : "") + "… (bisa beberapa menit, halaman ini boleh ditinggalkan)"; note.hidden = false; }
+  else if (m.sample) { note.textContent = "Ini data contoh (bukan dari Google), hanya untuk melihat tampilan. Klik Perbarui dari Google untuk data sebenarnya."; note.hidden = false; }
+  else if (!m.updated_at) { note.textContent = "Keyword inti platform ini belum pernah diriset. Klik Perbarui dari Google (beberapa menit)."; note.hidden = false; }
+  else if (m.stale) { note.textContent = "Data sudah lebih dari 24 jam. Klik Perbarui dari Google untuk mengambil yang terbaru."; note.hidden = false; }
   else note.hidden = true;
-  $("corelist").replaceChildren(...d.items.map(coreRow));
+  const open = new Set([...document.querySelectorAll("#seedlist details.seedbox[open] .sname")].map(n => n.textContent));
+  const boxes = d.items.map(seedBox);
+  $("seedlist").replaceChildren(...boxes);
+  boxes.forEach((b, i) => { if (open.has(d.items[i].seed)) b.open = true; });
 }
+let coreTimer = null, coreWasRunning = false;
 async function loadCore() {
-  try { renderCore(await api("/api/platforms/" + encodeURIComponent(SLUG) + "/inti")); }
-  catch (err) { $("coremeta").textContent = err.message; }
+  try {
+    const d = await api("/api/platforms/" + encodeURIComponent(SLUG) + "/inti");
+    renderCore(d);
+    const running = !!(d.meta.job && d.meta.job.running);
+    $("corerefresh").disabled = $("coredemo").disabled = running;
+    clearTimeout(coreTimer);
+    if (running) { coreWasRunning = true; coreTimer = setTimeout(loadCore, 2500); }
+    else if (coreWasRunning) {  // baru saja selesai: laporkan hasilnya sekali
+      coreWasRunning = false;
+      const job = d.meta.job || {}, r = job.result || { gagal: 0, dilewati: 0, errors: [] }, bad = r.gagal + r.dilewati;
+      if (job.error) showMsg("Pembaruan gagal: " + job.error, "err");
+      else if (bad) showMsg("Sebagian topik gagal diriset: " + r.gagal + " gagal, " + r.dilewati + " dilewati. " + (r.errors[0] || "") + " Hasil lama (bila ada) tetap ditampilkan.", "err");
+    }
+  } catch (err) { $("coremeta").textContent = err.message; }
 }
 async function refreshCore(demo) {
-  const b1 = $("corerefresh"), b2 = $("coredemo"), old = b1.textContent;
-  b1.disabled = b2.disabled = true; b1.textContent = demo ? "Memuat…" : "Memperbarui… (±1 menit)";
   showMsg("");
   try {
-    const d = await api("/api/platforms/" + encodeURIComponent(SLUG) + "/inti/refresh" + (demo ? "?demo=true" : ""), { method: "POST" });
-    renderCore(d);
-    const r = d.hasil;
-    if (r.gagal || r.dilewati) showMsg("Sebagian gagal diambil dari Google: " + r.gagal + " gagal, " + r.dilewati + " dilewati. " + (r.errors[0] || "") + " Data lama (bila ada) tetap ditampilkan.", "err");
+    await api("/api/platforms/" + encodeURIComponent(SLUG) + "/inti/refresh" + (demo ? "?demo=true" : ""), { method: "POST" });
   } catch (err) { showMsg(err.message, "err"); }
-  finally { b1.disabled = b2.disabled = false; b1.textContent = old; }
+  loadCore();
 }
 async function loadStatuses() {
   try {

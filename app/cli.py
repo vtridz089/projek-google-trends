@@ -186,7 +186,7 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 
 def cmd_core_refresh(args: argparse.Namespace) -> int:
-    """Ambil ulang keyword inti (Google Trends). Cocok dijadwalkan harian (cron / GitHub Actions)."""
+    """Riset ulang keyword inti (saran Google + Trends) dan simpan hasilnya. Cocok dijadwalkan harian (cron / GitHub Actions)."""
     from . import core, platforms
     db.init_db()
     core.init()

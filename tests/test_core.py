@@ -1,4 +1,4 @@
-"""Tes keyword inti per platform: daftar, perhitungan kenaikan, penyimpanan, kegagalan, dan API."""
+"""Tes keyword inti: tiap keyword inti diriset sebagai seed, hasilnya disimpan dan dibaca per platform."""
 import pytest
 
 from app import core, db, platforms
@@ -12,25 +12,29 @@ def _db(tmp_path, monkeypatch):
     core.init()
 
 
-def tl(values, partial_last=False):
-    rows = [{"t": i, "label": f"hari {i + 1}", "values": [v], "partial": False} for i, v in enumerate(values)]
-    if partial_last:
-        rows[-1]["partial"] = True
-    return rows
+def gain(v, brk=False):
+    return {"label": "Breakout" if brk else f"+{v}%", "value": v, "breakout": brk}
 
 
-class Fake:
-    name = "fake"
+def item(q, rank, g24=None, g7=None):
+    return {"query": q, "rank": rank, "words": len(q.split()), "pertanyaan": False, "longtail": False, "maksud": "informasional",
+            "maksud_label": "Informasional", "sumber": ["saran"], "naik_24j": g24, "naik_7h": g7, "naik_90h": None,
+            "skor": 50, "format": "Artikel"}
 
-    def __init__(self, series=None, fail=()):
-        self.series, self.fail, self.calls = series or {}, set(fail), []
 
-    def explore(self, keywords, geo, category, time_range, gprop="", parts=()):
-        kw = keywords[0]
-        self.calls.append((kw, time_range))
-        if kw in self.fail:
+class Runner:
+    """Pengganti riset keyword: isi per seed bisa diatur; seed tertentu bisa dibuat gagal."""
+    def __init__(self, per_seed=None, fail=(), source="google", errors=()):
+        self.per_seed, self.fail, self.source, self.errors, self.calls = per_seed or {}, set(fail), source, list(errors), []
+
+    def __call__(self, seed, geo, demo=False):
+        self.calls.append((seed, geo, demo))
+        if seed in self.fail:
             raise ExploreError("Google menolak (429)")
-        return {"timeline": tl(self.series.get(kw, [10] * 20 + [20] * 7)), "source": "fake"}
+        items = self.per_seed.get(seed) or [item(f"{seed.lower()} kapan dibuka", 1, g24=gain(300)), item(f"info {seed.lower()}", 2, g7=gain(40)),
+                                            item(f"jadwal {seed.lower()}", 3)]
+        return {"seed": seed, "items": items, "sumber": {"saran": self.source, "trends": self.source},
+                "errors": [{"scope": "x", "error": e} for e in self.errors]}
 
 
 # --------------------------------------------------------------------------- daftar
@@ -46,107 +50,119 @@ def test_core_keywords_match_the_list_given_by_the_client():
     assert core.keywords("jagoukp")[:2] == ("UKP", "UJIAN KOMPETENSI PERPAJAKAN") and core.keywords("xx") == ()
 
 
-# --------------------------------------------------------------------------- perhitungan
+# --------------------------------------------------------------------------- riset dan simpan
 
 
-def test_change_handles_zero_base():
-    assert core.change(150, 100) == {"value": 50, "label": "+50%", "breakout": False}
-    assert core.change(50, 100)["label"] == "-50%"
-    assert core.change(5, 0) == {"value": None, "label": "Baru muncul", "breakout": True}
-    assert core.change(0, 0) is None
-
-
-def test_metrics_windows_and_partial_day_dropped():
-    series = [10] * 83 + [20] * 6 + [40]            # 90 hari lengkap + satu hari
-    m = core.metrics(tl(series + [1], partial_last=True))  # hari terakhir (1) belum selesai -> diabaikan
-    assert m["status"] == "ok" and m["interest"] == 40 and len(m["series"]) == 90
-    assert m["ch_1d"]["value"] == 100                     # 40 vs 20
-    assert m["ch_7d"]["value"] == round((((20 * 6) + 40) / 7 - 10) / 10 * 100)
-    assert m["ch_90d"]["value"] == round((((20 * 6) + 40) / 7 - 10) / 10 * 100)
-
-
-def test_metrics_declines_and_few_data():
-    down = core.metrics(tl([100] * 20 + [50] * 7))
-    assert down["ch_7d"]["value"] < 0 and down["ch_7d"]["label"].startswith("-")
-    assert core.metrics(tl([5, 6, 7]))["status"] == "sedikit"
-    assert core.metrics(tl([0] * 30))["status"] == "sedikit"
-    assert core.metrics([])["status"] == "sedikit"
-
-
-# --------------------------------------------------------------------------- refresh dan simpan
-
-
-def test_refresh_stores_and_listing_reads_back():
-    f = Fake({"UKP": [10] * 20 + [30] * 7})
-    r = core.refresh("jagoukp", provider=f, now=1000.0)
-    assert r == {"diperbarui": 7, "gagal": 0, "dilewati": 0, "errors": []}
-    assert [c[0] for c in f.calls] == list(core.keywords("jagoukp")) and all(c[1] == "today 3-m" for c in f.calls)
-    out = core.listing("jagoukp", now=1000.0 + 60)
-    ukp = out["items"][0]
-    assert ukp["keyword"] == "UKP" and ukp["status"] == "ok" and ukp["interest"] == 30 and ukp["ch_7d"]["breakout"] is False
-    assert out["meta"]["ok"] == 7 and out["meta"]["total"] == 7 and out["meta"]["stale"] is False and out["meta"]["sample"] is False
+def test_refresh_researches_every_core_keyword_as_a_seed_and_stores_results():
+    r = Runner()
+    out = core.refresh("jagoukp", runner=r, now=1000.0)
+    assert out == {"diperbarui": 7, "gagal": 0, "dilewati": 0, "errors": []}
+    assert [c[0] for c in r.calls] == list(core.keywords("jagoukp")) and all(c[1] == "ID" and c[2] is False for c in r.calls)
+    data = core.listing("jagoukp", now=1060.0)
+    first = data["items"][0]
+    assert first["seed"] == "UKP" and first["status"] == "ok" and first["summary"]["total"] == 3 and first["summary"]["naik"] == 2
+    assert first["items"][0]["query"] == "ukp kapan dibuka" and first["items"][0]["naik_24j"]["breakout"] is False
+    assert first["summary"]["naik_24j"] == 1
+    m = data["meta"]
+    assert (m["total"], m["ok"], m["naik"], m["stale"], m["sample"]) == (7, 7, 14, False, False) and m["job"] is None
     assert core.listing("jagoukp", now=1000.0 + 25 * 3600)["meta"]["stale"] is True
 
 
 def test_listing_before_any_refresh_is_all_unfetched():
-    out = core.listing("jadippg")
-    assert [i["status"] for i in out["items"]] == ["belum"] * 5 and out["meta"]["updated_at"] is None and out["meta"]["stale"]
+    d = core.listing("jadippg")
+    assert [i["status"] for i in d["items"]] == ["belum"] * 5 and d["meta"]["updated_at"] is None and d["meta"]["stale"]
 
 
-def test_failure_keeps_previous_good_data_and_stops_after_repeated_blocks():
-    core.refresh("jadippg", provider=Fake(), now=1.0)
-    bad = Fake(fail=core.keywords("jadippg"))
-    r = core.refresh("jadippg", provider=bad, now=2.0)
-    assert r["gagal"] == core.MAX_CONSECUTIVE_FAILS and r["dilewati"] == 5 - core.MAX_CONSECUTIVE_FAILS and len(bad.calls) == 2
+def test_only_top_items_are_stored_and_new_keywords_are_flagged_on_the_next_run():
+    many = [item(f"ppg kata {i}", i) for i in range(1, 121)]
+    core.refresh("jadippg", runner=Runner({"PPG": many}), now=1.0)
+    first = core.listing("jadippg")["items"][0]
+    assert len(first["items"]) == core.MAX_ITEMS and first["summary"]["total"] == 120 and first["summary"]["ditampilkan"] == core.MAX_ITEMS
+    assert not any(i["baru"] for i in first["items"])                   # belum ada pembanding
+    nxt = [item("ppg kata 1", 1), item("ppg kata 2", 2), item("ppg topik baru", 3, g24=gain(500))]
+    core.refresh("jadippg", runner=Runner({"PPG": nxt}), now=2.0)
+    got = {i["query"]: i["baru"] for i in core.listing("jadippg")["items"][0]["items"]}
+    assert got == {"ppg kata 1": False, "ppg kata 2": False, "ppg topik baru": True}
+    assert core.listing("jadippg")["items"][0]["summary"]["baru"] == 1
+
+
+def test_failure_keeps_previous_results_and_stops_after_repeated_failures():
+    core.refresh("jadippg", runner=Runner(), now=1.0)
+    bad = Runner(fail=core.keywords("jadippg"))
+    out = core.refresh("jadippg", runner=bad, now=2.0)
+    assert out["gagal"] == core.MAX_CONSECUTIVE_FAILS and out["dilewati"] == 5 - core.MAX_CONSECUTIVE_FAILS and len(bad.calls) == 2
     items = core.listing("jadippg")["items"]
-    assert all(i["status"] == "ok" for i in items)                    # data lama tetap
-    assert "429" in items[0]["error"] and items[2]["error"] == ""      # galat dicatat hanya pada yang gagal
+    assert all(i["status"] == "ok" and i["items"] for i in items)      # hasil lama tetap
+    assert "429" in items[0]["error"] and items[2]["error"] == ""
 
 
-def test_failure_without_previous_data_is_marked_failed_and_other_keywords_still_work():
-    f = Fake(fail=["SOAL PPG"])
-    r = core.refresh("jadippg", provider=f, now=1.0)
-    assert (r["diperbarui"], r["gagal"]) == (4, 1)
-    by = {i["keyword"]: i for i in core.listing("jadippg")["items"]}
+def test_failure_without_previous_results_is_marked_and_other_seeds_still_work():
+    out = core.refresh("jadippg", runner=Runner(fail=["SOAL PPG"]), now=1.0)
+    assert (out["diperbarui"], out["gagal"]) == (4, 1)
+    by = {i["seed"]: i for i in core.listing("jadippg")["items"]}
     assert by["SOAL PPG"]["status"] == "gagal" and "429" in by["SOAL PPG"]["error"] and by["PPG"]["status"] == "ok"
 
 
+def test_partial_source_failure_is_recorded_but_results_are_kept():
+    core.refresh("jadippg", runner=Runner(errors=["Google Trends (24 jam): 429"]), now=1.0)
+    first = core.listing("jadippg")["items"][0]
+    assert first["status"] == "ok" and "429" in first["error"] and first["items"]
+
+
 def test_sample_data_is_flagged_and_replaced_by_real_data():
-    class Mock(Fake):
-        def explore(self, *a, **k):
-            r = super().explore(*a, **k); r["source"] = "mock"; return r
-    core.refresh("jadippg", provider=Mock(), now=1.0)
+    core.refresh("jadippg", runner=Runner(source="mock"), now=1.0)
     assert core.listing("jadippg")["meta"]["sample"] is True
-    core.refresh("jadippg", provider=Fake(), now=2.0)
+    core.refresh("jadippg", runner=Runner(), now=2.0)
     assert core.listing("jadippg")["meta"]["sample"] is False
-
-
-def test_few_data_keyword_is_reported_as_such():
-    r = core.refresh("jadippg", provider=Fake({"PPG": [0] * 30}), now=1.0)
-    assert r["diperbarui"] == 5
-    assert core.listing("jadippg")["items"][0]["status"] == "sedikit"
 
 
 def test_refresh_rejects_unknown_platform_and_concurrent_runs():
     with pytest.raises(KeyError):
-        core.refresh("xx", provider=Fake())
+        core.refresh("xx", runner=Runner())
     assert core._refresh_lock.acquire(blocking=False)
     try:
         with pytest.raises(core.CoreBusy):
-            core.refresh("jadippg", provider=Fake())
+            core.refresh("jadippg", runner=Runner())
+        with pytest.raises(core.CoreBusy):
+            core.start_refresh("jadippg", runner=Runner())
     finally:
         core._refresh_lock.release()
 
 
-def test_demo_mode_uses_mock_provider_and_fills_every_keyword():
-    r = core.refresh("jadiasn", demo=True, now=5.0)
-    assert r["diperbarui"] == 11 and r["gagal"] == 0
-    out = core.listing("jadiasn", now=6.0)
-    assert out["meta"]["sample"] is True and out["meta"]["ok"] + sum(1 for i in out["items"] if i["status"] == "sedikit") == 11
-    assert all(len(i["series"]) > 20 for i in out["items"])
+def test_background_job_reports_progress_and_result():
+    seen = []
+
+    class Slow(Runner):
+        def __call__(self, seed, geo, demo=False):
+            seen.append(dict(core._job))      # keadaan job di tengah proses
+            return super().__call__(seed, geo, demo)
+    job = core.start_refresh("jadippg", runner=Slow())
+    assert job["running"] is True and job["total"] == 5
+    core._job_thread.join(timeout=10)
+    end = core.job_state("jadippg")
+    assert end["running"] is False and end["result"]["diperbarui"] == 5 and end["done"] == 5 and end["error"] == ""
+    assert seen and all(s["running"] for s in seen) and seen[0]["platform"] == "jadippg"
+    assert core.job_state("jadiasn") is None
 
 
-# --------------------------------------------------------------------------- API
+def test_background_job_surfaces_unexpected_errors():
+    def boom(seed, geo, demo=False):
+        raise RuntimeError("rusak")
+    core.start_refresh("jadippg", runner=boom)
+    core._job_thread.join(timeout=10)
+    assert core.job_state("jadippg")["running"] is False and "rusak" in core.job_state("jadippg")["error"]
+
+
+def test_real_research_in_demo_mode_fills_a_platform_end_to_end():
+    out = core.refresh("jadippg", demo=True, now=5.0)
+    assert out["diperbarui"] == 5 and out["gagal"] == 0
+    d = core.listing("jadippg", now=6.0)
+    assert d["meta"]["sample"] is True and all(i["status"] == "ok" and len(i["items"]) > 10 for i in d["items"])
+    top = d["items"][0]["items"][0]
+    assert {"query", "rank", "maksud_label", "sumber", "naik_24j", "naik_7h", "naik_90h", "baru"} <= set(top)
+
+
+# --------------------------------------------------------------------------- API & CLI
 
 
 @pytest.fixture()
@@ -160,12 +176,14 @@ def client():
         yield c
 
 
-def test_api_core_list_and_demo_refresh(client):
-    r = client.get("/api/platforms/jadibumn/inti").json()
-    assert r["platform"] == "jadibumn" and len(r["items"]) == 8 and r["meta"]["updated_at"] is None
-    done = client.post("/api/platforms/jadibumn/inti/refresh", params={"demo": "true"}).json()
-    assert done["hasil"]["diperbarui"] == 8 and done["meta"]["sample"] is True and done["items"][0]["keyword"] == "RBB BUMN"
-    assert client.get("/api/platforms/jadibumn/inti").json()["meta"]["ok"] >= 1
+def test_api_core_list_and_background_refresh(client):
+    r = client.get("/api/platforms/jadippg/inti").json()
+    assert r["platform"] == "jadippg" and len(r["items"]) == 5 and r["meta"]["updated_at"] is None
+    started = client.post("/api/platforms/jadippg/inti/refresh", params={"demo": "true"}).json()
+    assert started["job"]["total"] == 5
+    core._job_thread.join(timeout=30)
+    d = client.get("/api/platforms/jadippg/inti").json()
+    assert d["meta"]["ok"] == 5 and d["meta"]["sample"] is True and d["meta"]["job"]["running"] is False
     assert client.get("/api/platforms/xx/inti").status_code == 404
     assert client.post("/api/platforms/xx/inti/refresh").status_code == 404
 
