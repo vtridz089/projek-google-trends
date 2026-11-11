@@ -71,8 +71,8 @@ def test_normalize_booming_ok():
     (dict(topic="x" * 101), "terlalu panjang"),
     (dict(topic="bumn", geo="Indonesia"), "wilayah"),
     (dict(topic="bumn", time_range="kemarin"), "Rentang waktu"),
-    (dict(topic="bumn", limit=0), "antara 1 dan 20"),
-    (dict(topic="bumn", limit=21), "antara 1 dan 20"),
+    (dict(topic="bumn", limit=0), "antara 1 dan 50"),
+    (dict(topic="bumn", limit=51), "antara 1 dan 50"),
     (dict(topic="bumn", limit="abc"), "angka"),
 ])
 def test_normalize_booming_rejects(kw, msg):

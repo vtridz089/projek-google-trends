@@ -19,7 +19,7 @@ from . import db, explore, keyword_research
 from .explore import ExploreError
 
 STALE_SECONDS = 24 * 3600
-MAX_ITEMS = 80                # keyword yang disimpan per seed (yang sedang naik berada di atas)
+MAX_ITEMS = 1000              # batas pengaman saja: semua keyword nyata disimpan (yang sedang naik berada di atas)
 MAX_CONSECUTIVE_FAILS = 2     # berhenti lebih awal bila Google/sumber gagal berturut-turut
 GEO = "ID"
 CHANNELS = ("youtube", "bing")  # saran YouTube dan Bing ikut dicari, selain Google
@@ -160,7 +160,7 @@ def trends_related(seed: str, geo: str, demo: bool = False) -> dict:
     for time_range, column in keyword_research.WINDOWS:
         key = column.replace("naik_", "")
         try:
-            res = explore_service.run_booming(explore_service.normalize_booming(seed, geo, 0, time_range, "", 20), demo=demo)
+            res = explore_service.run_booming(explore_service.normalize_booming(seed, geo, 0, time_range, "", explore_service.BOOMING_MAX_LIMIT), demo=demo)
             out[key] = [{"query": i["query"], "kind": i["kind"], "label": i["label"], "value": i["value"],
                          "breakout": bool(i.get("breakout"))} for i in res["items"]]
         except (ExploreError, ValueError):

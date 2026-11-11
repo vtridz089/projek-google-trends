@@ -73,7 +73,8 @@ def test_listing_before_any_refresh_is_all_unfetched():
     assert [i["status"] for i in d["items"]] == ["belum"] * 5 and d["meta"]["updated_at"] is None and d["meta"]["stale"]
 
 
-def test_only_top_items_are_stored_and_new_keywords_are_flagged_on_the_next_run():
+def test_all_items_are_stored_and_new_keywords_are_flagged_on_the_next_run(monkeypatch):
+    monkeypatch.setattr(core, "MAX_ITEMS", 80)  # batas pengaman; uji bahwa pemotongan hanya terjadi di batas itu
     many = [item(f"ppg kata {i}", i) for i in range(1, 121)]
     core.refresh("jadippg", runner=Runner({"PPG": many}), now=1.0)
     first = core.listing("jadippg")["items"][0]

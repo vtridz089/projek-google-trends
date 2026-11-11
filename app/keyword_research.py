@@ -263,7 +263,7 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
         for time_range, column in WINDOWS:
             try:
                 res = explore_service.run_booming(
-                    explore_service.normalize_booming(seed, geo, 0, time_range, "", 20),
+                    explore_service.normalize_booming(seed, geo, 0, time_range, "", explore_service.BOOMING_MAX_LIMIT),
                     demo=demo, refresh=refresh, provider=provider, now=now)
             except ExploreError as exc:
                 errors.append({"scope": f"Google Trends ({WINDOW_LABEL[time_range]})",

@@ -18,6 +18,7 @@ from .explore import GPROPS, PARTS, ExploreError, get_provider
 KEYWORD_LIMIT = 5
 KEYWORD_MAX_LEN = 100
 BOOMING_DEFAULT_LIMIT = 10
+BOOMING_MAX_LIMIT = 50  # Google memberi sampai ~25 Top dan ~25 Naik per kurun; semuanya boleh diambil
 BREAKOUT_VALUE = 5000  # Google menandai kenaikan > 5.000% sebagai "Breakout"
 
 _TIME_RE = re.compile(r"^(now \d{1,2}-[Hd]|today \d{1,2}-[mMy]|all|\d{4}-\d{2}-\d{2} \d{4}-\d{2}-\d{2})$")
@@ -98,8 +99,8 @@ def normalize_booming(topic, geo: str = "ID", category=0, time_range: str = "now
         limit = int(limit)
     except (TypeError, ValueError):
         raise ValueError("Jumlah hasil harus berupa angka.") from None
-    if not 1 <= limit <= 20:
-        raise ValueError("Jumlah hasil harus antara 1 dan 20.")
+    if not 1 <= limit <= BOOMING_MAX_LIMIT:
+        raise ValueError(f"Jumlah hasil harus antara 1 dan {BOOMING_MAX_LIMIT}.")
     # ``sub`` = pencarian turunan dari panel keyword: kind berbeda agar tidak membanjiri "Pencarian terakhir".
     params = {"kind": "booming-sub" if sub else "booming", "topic": base["keywords"][0],
               "keywords": base["keywords"], "geo": base["geo"], "category": base["category"],
@@ -241,7 +242,7 @@ def run_booming(params: dict, *, demo: bool = False, refresh: bool = False, prov
                 hint="Coba topik yang lebih umum, rentang waktu lebih panjang (30 atau 90 hari), atau wilayah lebih luas.")
         only = bool(params.get("rising_only"))
         items = rank_booming(rel, topic, limit, include_popular=not only)
-        popular_count = (sum(1 for i in rank_booming(rel, topic, 20) if i["kind"] == "populer") if only else None)
+        popular_count = (sum(1 for i in rank_booming(rel, topic, BOOMING_MAX_LIMIT) if i["kind"] == "populer") if only else None)
         for i in items:
             if i["kind"] == "naik":
                 i["peluang"] = insight.opportunity_one_period(i, topic, params["time"])
