@@ -238,6 +238,9 @@ def run_keywords(seed, geo: str = "ID", depth: str = "cepat", *, with_trends: bo
     """Riset keyword untuk satu seed. Sumber yang gagal dicatat di ``errors`` tanpa menggagalkan semuanya;
     hanya bila TIDAK ADA satu pun data, ExploreError dilempar."""
     seed, geo, depth = normalize(seed, geo, depth)
+    # Google Trends memberi hasil jauh lebih sedikit untuk huruf kapital ("CPNS 2026": 1 Top, 0 Naik; "cpns 2026": 25 Top,
+    # 19 Naik), sedangkan di trends.google.com orang mengetik huruf kecil. Selalu pakai huruf kecil.
+    seed = seed.lower()
     channels = normalize_channels(channels)
     now = time.time() if now is None else now
     params = {"kind": "keyword", "seed": seed, "geo": geo, "depth": depth, "trends": bool(with_trends), "win": "24j-7h-90h", "urut": "naik-dulu"}

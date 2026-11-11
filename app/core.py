@@ -170,7 +170,7 @@ def trends_related(seed: str, geo: str, demo: bool = False) -> dict:
 
 def _default_runner(seed: str, geo: str, demo: bool = False) -> dict:
     result = keyword_research.run_keywords(seed, geo, "cepat", demo=demo, refresh=True, channels=CHANNELS)
-    result["trends_terkait"] = trends_related(seed, geo, demo)
+    result["trends_terkait"] = trends_related(seed.lower(), geo, demo)  # huruf kecil, lihat run_keywords
     return enrich_with_trends(result, geo, demo=demo)
 
 
