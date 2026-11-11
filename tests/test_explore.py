@@ -359,7 +359,7 @@ def norm(**kw):
 
 def test_normalize_cleans_keywords():
     p = norm(keywords=["  Beasiswa ", "beasiswa", "cpns, pns", "", "a\tb"])
-    assert p["keywords"] == ["Beasiswa", "cpns pns", "a b"]  # dedupe, koma jadi spasi
+    assert p["keywords"] == ["beasiswa", "cpns pns", "a b"]  # dedupe, koma jadi spasi, huruf kecil
     assert p["parts"] == ["timeline", "related", "regions"]
     assert norm(geo="id-jk")["geo"] == "ID-JK"
     assert norm(geo="")["geo"] == ""

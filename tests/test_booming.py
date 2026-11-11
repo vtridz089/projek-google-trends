@@ -60,7 +60,7 @@ def test_limit_and_empty():
 
 def test_normalize_booming_ok():
     p = normalize_booming("  BUMN ", "id", "19", "now 7-d", "", "10")
-    assert p == {"kind": "booming", "topic": "BUMN", "keywords": ["BUMN"], "geo": "ID", "category": 19,
+    assert p == {"kind": "booming", "topic": "bumn", "keywords": ["bumn"], "geo": "ID", "category": 19,
                  "time": "now 7-d", "gprop": "", "parts": ["related"], "limit": 10}
 
 
@@ -122,7 +122,7 @@ def test_run_booming_builds_ranked_result_and_only_requests_related(tmp_db):
     out = run_booming(booming_params(), provider=prov, now=1000)
     assert prov.last_parts == ("related",)  # tidak membuang kuota untuk grafik
     assert [i["query"] for i in out["items"]] == ["telkom", "garuda", "danantara"]
-    assert out["rising_count"] == 2 and out["topic"] == "BUMN" and out["category_name"] == "Semua kategori"
+    assert out["rising_count"] == 2 and out["topic"] == "bumn" and out["category_name"] == "Semua kategori"
     assert out["cached"] is False
     assert any("diisi pencarian terpopuler" in n for n in out["notes"])
     assert "catatan sumber" in out["notes"]
@@ -388,7 +388,7 @@ def test_sub_lookups_do_not_flood_recent_searches(tmp_db):
     run_booming(rising_params(), provider=prov, now=1000)
     run_booming(normalize_booming("telkom", "ID", 0, "now 7-d", "", 10, rising_only=True, sub=True),
                 provider=RelProvider(GOOD, key="telkom"), now=1001)
-    assert [p["topic"] for p in db.recent_searches(8, kind="booming")] == ["BUMN"]
+    assert [p["topic"] for p in db.recent_searches(8, kind="booming")] == ["bumn"]
 
 
 def test_one_period_opportunity_short_window_gets_early_signal_and_matches_formula():

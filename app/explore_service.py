@@ -30,7 +30,9 @@ def normalize_params(keywords, geo: str = "", category=0, time_range: str = "tod
     cleaned: list[str] = []
     seen: set[str] = set()
     for raw in keywords or []:
-        kw = re.sub(r"\s+", " ", str(raw).replace(",", " ")).strip()
+        # Huruf kecil: Google Trends memberi hasil jauh lebih sedikit untuk huruf kapital ("CPNS 2026" vs "cpns 2026"),
+        # sedangkan di trends.google.com orang mengetik huruf kecil. Dengan begini hasilnya sama dengan situsnya.
+        kw = re.sub(r"\s+", " ", str(raw).replace(",", " ")).strip().lower()
         if not kw:
             continue
         if len(kw) > KEYWORD_MAX_LEN:
@@ -183,7 +185,7 @@ def run(params: dict, *, demo: bool = False, refresh: bool = False, provider=Non
 
 
 def _is_breakout(r: dict) -> bool:
-    return str(r.get("label", "")).strip().lower() == "breakout" or r.get("value", 0) >= BREAKOUT_VALUE
+    return str(r.get("label", "")).strip().lower() in ("breakout", "pesat") or r.get("value", 0) >= BREAKOUT_VALUE
 
 
 def rank_booming(rel: dict, topic: str, limit: int = BOOMING_DEFAULT_LIMIT, *,
