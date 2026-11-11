@@ -93,6 +93,7 @@ def run_all(runner=None, demo: bool = False) -> dict:
     return total
 
 
+FILL_MIN = 5  # beberapa topik memang tidak punya data (pencarian terlalu kecil); itu bukan "kosong"
 RETRY_EMPTY = 3600  # detik: jeda mencoba lagi bila masih ada keyword inti yang belum punya hasil
 _last_empty_try = 0.0
 
@@ -108,7 +109,7 @@ def tick(now: datetime | None = None, runner=None) -> bool:
         return False
     scheduled = due(now, schedule_time(), get_last())
     fill = False
-    if not scheduled and core.missing() > 0 and time.time() - _last_empty_try >= RETRY_EMPTY:
+    if not scheduled and core.missing() >= FILL_MIN and time.time() - _last_empty_try >= RETRY_EMPTY:
         fill = True
     if not (scheduled or fill):
         return False

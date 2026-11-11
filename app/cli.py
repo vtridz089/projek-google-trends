@@ -208,7 +208,9 @@ def cmd_core_refresh(args: argparse.Namespace) -> int:
         bad += r["gagal"] + r["dilewati"]
     if args.export:
         print(f"{core.export_json(args.export)} topik ditulis ke {args.export}")
-    return 1 if bad else 0
+    # Beberapa topik memang tidak punya data (pencarian terlalu kecil di Google Trends); itu bukan kegagalan job.
+    total = sum(len(core.keywords(sl)) for sl in slugs)
+    return 1 if bad > max(2, total // 10) else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
