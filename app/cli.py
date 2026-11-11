@@ -218,8 +218,12 @@ def cmd_trends_debug(args: argparse.Namespace) -> int:
     import json
     from .explore import GoogleDirectProvider
     p = GoogleDirectProvider()
+    variants = [(p.hl, p.tz)] + ([("en-US", "-420"), ("en-US", "0"), ("id", "0"), ("id-ID", "-420")] if args.varian else [])
     for term in args.term:
-        for tr in ("now 1-d", "now 7-d", "today 3-m"):
+      for hl, tz in variants:
+        p.hl, p.tz = hl, tz
+        print(f"##### hl={hl} tz={tz}")
+        for tr in (("now 1-d",) if args.varian else ("now 1-d", "now 7-d", "today 3-m")):
             print(f"=== {term!r} geo={args.geo} {tr}")
             try:
                 p._ensure_session()
@@ -286,6 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("trends-debug", help="diagnosa: jawaban mentah Google Trends untuk beberapa kata")
     p.add_argument("--term", action="append", required=True)
     p.add_argument("--geo", default="ID")
+    p.add_argument("--varian", action="store_true", help="coba beberapa kombinasi bahasa/zona waktu untuk 24 jam")
     p.set_defaults(func=cmd_trends_debug)
 
     p = sub.add_parser("export", help="tulis database ke CSV")

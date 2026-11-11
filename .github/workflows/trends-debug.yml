@@ -8,6 +8,10 @@ on:
       kata:
         description: "Kata yang dicek, dipisah koma"
         default: "soal pppk,cpns 2026,pppk"
+      varian:
+        description: "Coba beberapa kombinasi bahasa/zona waktu (24 jam)"
+        type: boolean
+        default: false
 
 jobs:
   debug:
@@ -20,8 +24,10 @@ jobs:
       - run: pip install -r requirements.txt
       - env:
           KATA: ${{ inputs.kata }}
+          VARIAN: ${{ inputs.varian }}
         run: |
           args=()
           IFS=',' read -ra T <<< "$KATA"
           for t in "${T[@]}"; do args+=(--term "$(echo "$t" | xargs)"); done
+          [ "$VARIAN" = "true" ] && args+=(--varian)
           python -m app.cli trends-debug "${args[@]}"
