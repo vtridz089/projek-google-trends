@@ -1,0 +1,27 @@
+name: Diagnosa Google Trends
+
+# Manual: menampilkan jawaban mentah Google Trends (pencarian terkait) untuk beberapa kata,
+# untuk membandingkan dengan yang tampil di trends.google.com.
+on:
+  workflow_dispatch:
+    inputs:
+      kata:
+        description: "Kata yang dicek, dipisah koma"
+        default: "soal pppk,cpns 2026,pppk"
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - env:
+          KATA: ${{ inputs.kata }}
+        run: |
+          args=()
+          IFS=',' read -ra T <<< "$KATA"
+          for t in "${T[@]}"; do args+=(--term "$(echo "$t" | xargs)"); done
+          python -m app.cli trends-debug "${args[@]}"

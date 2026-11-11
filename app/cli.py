@@ -253,6 +253,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--export", metavar="BERKAS", help="tulis hasil ke berkas JSON (mis. data/core_research.json)")
     p.set_defaults(func=cmd_core_refresh)
 
+    p = sub.add_parser("trends-debug", help="diagnosa: jawaban mentah Google Trends untuk beberapa kata")
+    p.add_argument("--term", action="append", required=True)
+    p.add_argument("--geo", default="ID")
+    p.set_defaults(func=cmd_trends_debug)
+
     p = sub.add_parser("export", help="tulis database ke CSV")
     p.add_argument("--csv", default=_default_csv())
     p.set_defaults(func=cmd_export)
@@ -269,3 +274,29 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def cmd_trends_debug(args: argparse.Namespace) -> int:
+    """Diagnosa: tampilkan jawaban mentah Google Trends (pencarian terkait) per kurun waktu untuk beberapa kata."""
+    import json
+    from .explore import GoogleDirectProvider
+    p = GoogleDirectProvider()
+    for term in args.term:
+        for tr in ("now 1-d", "now 7-d", "today 3-m"):
+            print(f"=== {term!r} geo={args.geo} {tr}")
+            try:
+                p._ensure_session()
+                req = {"comparisonItem": [{"keyword": term, "geo": args.geo, "time": tr}], "category": 0, "property": ""}
+                raw = p._get("/api/explore", {"hl": p.hl, "tz": p.tz, "req": json.dumps(req, separators=(",", ":"))})
+                from .explore import parse_google_json
+                widgets = parse_google_json(raw).get("widgets") or []
+                print("widgets:", [w.get("id") for w in widgets])
+                for w in widgets:
+                    if str(w.get("id", "")).startswith("RELATED_QUERIES"):
+                        body = p._get("/api/widgetdata/relatedsearches", {
+                            "hl": p.hl, "tz": p.tz, "req": json.dumps(w["request"], separators=(",", ":")), "token": w["token"]})
+                        print("related request:", json.dumps(w["request"])[:400])
+                        print("related raw:", body[:700].replace("\n", " "))
+            except Exception as exc:  # noqa: BLE001 - diagnosa: tampilkan apa pun yang terjadi
+                print("GALAT:", exc)
+    return 0
