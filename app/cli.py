@@ -213,6 +213,32 @@ def cmd_core_refresh(args: argparse.Namespace) -> int:
     return 1 if bad > max(2, total // 10) else 0
 
 
+def cmd_trends_debug(args: argparse.Namespace) -> int:
+    """Diagnosa: tampilkan jawaban mentah Google Trends (pencarian terkait) per kurun waktu untuk beberapa kata."""
+    import json
+    from .explore import GoogleDirectProvider
+    p = GoogleDirectProvider()
+    for term in args.term:
+        for tr in ("now 1-d", "now 7-d", "today 3-m"):
+            print(f"=== {term!r} geo={args.geo} {tr}")
+            try:
+                p._ensure_session()
+                req = {"comparisonItem": [{"keyword": term, "geo": args.geo, "time": tr}], "category": 0, "property": ""}
+                raw = p._get("/api/explore", {"hl": p.hl, "tz": p.tz, "req": json.dumps(req, separators=(",", ":"))})
+                from .explore import parse_google_json
+                widgets = parse_google_json(raw).get("widgets") or []
+                print("widgets:", [w.get("id") for w in widgets])
+                for w in widgets:
+                    if str(w.get("id", "")).startswith("RELATED_QUERIES"):
+                        body = p._get("/api/widgetdata/relatedsearches", {
+                            "hl": p.hl, "tz": p.tz, "req": json.dumps(w["request"], separators=(",", ":")), "token": w["token"]})
+                        print("related request:", json.dumps(w["request"])[:400])
+                        print("related raw:", body[:700].replace("\n", " "))
+            except Exception as exc:  # noqa: BLE001 - diagnosa: tampilkan apa pun yang terjadi
+                print("GALAT:", exc)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="TrendWatch CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -275,28 +301,3 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     raise SystemExit(main())
 
-
-def cmd_trends_debug(args: argparse.Namespace) -> int:
-    """Diagnosa: tampilkan jawaban mentah Google Trends (pencarian terkait) per kurun waktu untuk beberapa kata."""
-    import json
-    from .explore import GoogleDirectProvider
-    p = GoogleDirectProvider()
-    for term in args.term:
-        for tr in ("now 1-d", "now 7-d", "today 3-m"):
-            print(f"=== {term!r} geo={args.geo} {tr}")
-            try:
-                p._ensure_session()
-                req = {"comparisonItem": [{"keyword": term, "geo": args.geo, "time": tr}], "category": 0, "property": ""}
-                raw = p._get("/api/explore", {"hl": p.hl, "tz": p.tz, "req": json.dumps(req, separators=(",", ":"))})
-                from .explore import parse_google_json
-                widgets = parse_google_json(raw).get("widgets") or []
-                print("widgets:", [w.get("id") for w in widgets])
-                for w in widgets:
-                    if str(w.get("id", "")).startswith("RELATED_QUERIES"):
-                        body = p._get("/api/widgetdata/relatedsearches", {
-                            "hl": p.hl, "tz": p.tz, "req": json.dumps(w["request"], separators=(",", ":")), "token": w["token"]})
-                        print("related request:", json.dumps(w["request"])[:400])
-                        print("related raw:", body[:700].replace("\n", " "))
-            except Exception as exc:  # noqa: BLE001 - diagnosa: tampilkan apa pun yang terjadi
-                print("GALAT:", exc)
-    return 0
