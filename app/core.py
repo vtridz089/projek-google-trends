@@ -10,6 +10,7 @@ Pembaruan dijalankan lewat tombol di dashboard (di latar belakang, ada progres) 
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from contextlib import closing
@@ -236,3 +237,66 @@ def listing(slug: str, geo: str = GEO, now: float | None = None) -> dict:
 def _schedule_meta() -> dict:
     from . import scheduler  # impor lambat: scheduler memakai core
     return {"jadwal": scheduler.label(), "jadwal_terakhir": scheduler.get_last() or None}
+
+
+# --------------------------------------------------------------------------- berkas hasil (supaya langsung terisi saat dibuka)
+
+SNAPSHOT_COLS = ("platform", "seed", "geo", "status", "items", "all_queries", "summary", "source", "error", "fetched_at")
+
+
+def snapshot_path() -> str:
+    return os.environ.get("TRENDWATCH_CORE_JSON", "data/core_research.json")
+
+
+def export_json(path: str | None = None) -> int:
+    """Tulis hasil riset yang baik (status ok, data asli) ke berkas JSON agar ikut tersimpan di repo."""
+    path = path or snapshot_path()
+    with closing(db.connect()) as conn:
+        rows = conn.execute("SELECT * FROM core_research WHERE status = 'ok' AND source != 'mock' "
+                            "ORDER BY platform, seed, geo").fetchall()
+    data = [{c: (json.loads(r[c]) if c in ("items", "all_queries", "summary") else r[c]) for c in SNAPSHOT_COLS} for r in rows]
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+    return len(data)
+
+
+def import_json(path: str | None = None) -> int:
+    """Muat berkas hasil riset. Hanya mengisi yang belum ada atau lebih lama; hasil yang lebih baru tidak ditimpa."""
+    path = path or snapshot_path()
+    if not os.path.exists(path):
+        return 0
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        assert isinstance(data, list)
+    except (OSError, ValueError, AssertionError):
+        return 0
+    loaded = 0
+    with closing(db.connect()) as conn, conn:
+        for d in data:
+            try:
+                slug, seed, geo = d["platform"], d["seed"], d["geo"]
+                if seed not in CORE.get(slug, ()) or d["status"] != "ok":
+                    continue
+                old = _existing(conn, slug, seed, geo)
+                if old and old["status"] == "ok" and old["fetched_at"] >= float(d["fetched_at"]):
+                    continue
+                conn.execute("""INSERT OR REPLACE INTO core_research
+                    (platform, seed, geo, status, items, all_queries, summary, source, error, fetched_at)
+                    VALUES (?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?)""",
+                             (slug, seed, geo, json.dumps(d["items"], ensure_ascii=False),
+                              json.dumps(d["all_queries"], ensure_ascii=False), json.dumps(d["summary"]),
+                              str(d.get("source", "google")), str(d.get("error", ""))[:300], float(d["fetched_at"])))
+                loaded += 1
+            except (KeyError, TypeError, ValueError):
+                continue
+    return loaded
+
+
+def missing(geo: str = GEO) -> int:
+    """Jumlah keyword inti yang belum punya hasil riset (status ok)."""
+    with closing(db.connect()) as conn:
+        have = {(r["platform"], r["seed"]) for r in conn.execute(
+            "SELECT platform, seed FROM core_research WHERE status = 'ok' AND geo = ?", (geo,))}
+    return sum(1 for slug, seeds in CORE.items() for s in seeds if (slug, s) not in have)

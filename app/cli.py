@@ -190,6 +190,8 @@ def cmd_core_refresh(args: argparse.Namespace) -> int:
     from . import core, platforms
     db.init_db()
     core.init()
+    if args.export:
+        core.import_json(args.export)  # mulai dari hasil terakhir di repo; yang gagal diambil tetap memakai data lama
     slugs = [p.slug for p in platforms.PLATFORMS] if args.platform in (None, "all") else [args.platform]
     bad = 0
     for slug in slugs:
@@ -204,6 +206,8 @@ def cmd_core_refresh(args: argparse.Namespace) -> int:
         for e in r["errors"]:
             print("  -", e)
         bad += r["gagal"] + r["dilewati"]
+    if args.export:
+        print(f"{core.export_json(args.export)} topik ditulis ke {args.export}")
     return 1 if bad else 0
 
 
@@ -244,6 +248,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--platform", default="all", help="slug platform (mis. jadiasn) atau 'all'")
     p.add_argument("--geo", default="ID")
     p.add_argument("--demo", action="store_true", help="isi dengan data contoh (bukan dari Google)")
+    p.add_argument("--export", metavar="BERKAS", help="tulis hasil ke berkas JSON (mis. data/core_research.json)")
     p.set_defaults(func=cmd_core_refresh)
 
     p = sub.add_parser("export", help="tulis database ke CSV")

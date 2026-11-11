@@ -46,6 +46,12 @@ async def lifespan(_: FastAPI):
     history.init()
     news.init()
     core.init()
+    try:
+        n = core.import_json()
+        if n:
+            log.info("Hasil keyword inti dimuat dari %s: %d topik", core.snapshot_path(), n)
+    except Exception:  # berkas rusak tidak boleh mencegah aplikasi menyala
+        log.exception("Gagal memuat hasil keyword inti")
     log.info("Database: %s (%d akun)", db.db_path(), users.count())
     stop_schedule = threading.Event()
     scheduler.start(stop_schedule)

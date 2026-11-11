@@ -2,6 +2,7 @@
 
 - ``TRENDWATCH_CORE_SCHEDULE``: jam jalan ``HH:MM`` (bawaan ``06:00``); ``off`` untuk mematikan.
 - ``TRENDWATCH_TZ``: zona waktu jadwal (bawaan ``Asia/Jakarta``).
+Bila ada keyword inti yang belum punya hasil, riset langsung jalan tanpa menunggu jam itu.
 Bila aplikasi baru menyala sesudah jam itu dan hari ini belum dijalankan, riset langsung dijalankan (mengejar).
 Tanggal terakhir yang selesai disimpan di database, jadi restart tidak mengulang riset di hari yang sama.
 Hanya berjalan bila aplikasinya hidup: pada hosting yang tidur, jadwal ini tidak jalan.
@@ -11,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from contextlib import closing
 from datetime import date, datetime, time as dtime, timedelta, timezone
 
@@ -91,16 +93,33 @@ def run_all(runner=None, demo: bool = False) -> dict:
     return total
 
 
+RETRY_EMPTY = 3600  # detik: jeda mencoba lagi bila masih ada keyword inti yang belum punya hasil
+_last_empty_try = 0.0
+
+
 def tick(now: datetime | None = None, runner=None) -> bool:
-    """Satu putaran pemeriksaan jadwal. True bila riset harian dijalankan."""
+    """Satu putaran pemeriksaan jadwal. True bila riset dijalankan.
+
+    Selain jadwal harian, bila ada keyword inti yang belum punya hasil sama sekali (mis. database baru),
+    riset langsung dijalankan tanpa menunggu jam jadwal (diulang paling cepat tiap jam bila Google menolak)."""
+    global _last_empty_try
     now = now or datetime.now(tzinfo())
-    if not due(now, schedule_time(), get_last()):
+    if schedule_time() is None:
         return False
+    scheduled = due(now, schedule_time(), get_last())
+    fill = False
+    if not scheduled and core.missing() > 0 and time.time() - _last_empty_try >= RETRY_EMPTY:
+        fill = True
+    if not (scheduled or fill):
+        return False
+    if fill:
+        _last_empty_try = time.time()
     log.info("Menjalankan riset harian keyword inti (%s)", now.date().isoformat())
     result = run_all(runner=runner)
     if result.get("sibuk"):
         return False
-    set_last(now.date().isoformat())
+    if scheduled:
+        set_last(now.date().isoformat())
     log.info("Riset harian selesai: %s", result)
     return True
 

@@ -1,0 +1,43 @@
+name: Riset keyword inti harian
+
+# Setiap pagi meriset semua 96 keyword inti (15 platform) lalu menyimpan hasilnya ke data/core_research.json.
+# Aplikasi memuat berkas ini saat menyala, jadi dashboard langsung terisi tanpa menunggu riset.
+# Sumber data: Google langsung (gratis, tetapi Google kadang menolak IP server dengan HTTP 429).
+# Topik yang gagal tetap memakai hasil terakhir yang baik.
+on:
+  schedule:
+    - cron: "30 22 * * *"   # 22:30 UTC = 05:30 WIB, selesai sebelum jam kerja
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-data
+  cancel-in-progress: false
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Riset semua keyword inti
+        continue-on-error: true   # sebagian topik gagal tidak boleh membuang yang berhasil
+        run: python -m app.cli core-refresh --export data/core_research.json
+      - name: Simpan hasil ke repo
+        run: |
+          if [ -n "$(git status --porcelain data/core_research.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/core_research.json
+            git commit -m "Keyword inti harian $(date -u +%F)"
+            git pull --rebase -q origin main
+            git push
+          else
+            echo "Tidak ada perubahan data."
+          fi
