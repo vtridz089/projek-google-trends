@@ -487,3 +487,10 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 .sbody { padding: 4px 14px 14px; }
 .seedbar { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; margin: 0 0 6px; }
 @media (prefers-reduced-motion: reduce) { .seedbox > summary::before { transition: none; } }
+
+/* fokus kurun waktu di Keyword inti */
+.seg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.seg .sub { margin-right: 4px; }
+.seg button { padding: 5px 12px; border-radius: 999px; font-size: .88rem; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: transparent; }
+.seedbox.kosong > summary .sname { opacity: .6; }
