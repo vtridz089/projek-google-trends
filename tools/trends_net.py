@@ -25,8 +25,14 @@ with sync_playwright() as p:
             seen.append((r.request.method, u, r.request.post_data, body))
 
     pg.on("response", on_resp)
-    pg.goto(url, wait_until="networkidle", timeout=90000)
-    pg.wait_for_timeout(8000)
+    for attempt in range(6):
+        pg.goto(url, wait_until="networkidle", timeout=90000)
+        pg.wait_for_timeout(6000)
+        if "429" not in pg.title():
+            break
+        print(f"percobaan {attempt + 1}: 429, tunggu lalu ulangi")
+        pg.wait_for_timeout(10000 * (attempt + 1))
+    pg.wait_for_timeout(6000)
     print("TITLE:", pg.title(), "| URL:", pg.url)
     txt = pg.inner_text("body")
     i = txt.find("Rising")
