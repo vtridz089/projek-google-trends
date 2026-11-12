@@ -668,12 +668,12 @@ function trendsPanel(it) {
     if (!rows.length) { box.append(el("p", { class: "sub", text: "Tidak ada." })); return box; }
     box.append(head, el("ol", { class: "ktable" }, rows.map((r, i) => {
       const li = row(mk(r, i, kind), d);
-      if (kind !== "naik") li.querySelector(".tags").append(el("span", { class: "pill", text: "Top " + r.value, title: "Skor popularitas Google Trends (0 sampai 100)" }));
+      if (kind !== "naik") li.querySelector(".tags").append(el("span", { class: "pill", text: "Top " + r.value, title: "Nilai popularitas Google Trends (0 sampai 100)" }));
       return li;
     })));
     return box;
   };
-  wrap.append(section("Rising queries", "naik"), section("Top queries", "top", " (skor 0 sampai 100)"));
+  wrap.append(section("Rising queries", "naik"), section("Top queries", "top", " (nilai 0 sampai 100)"));
   return wrap;
 }
 function fillSeed(box, it) {

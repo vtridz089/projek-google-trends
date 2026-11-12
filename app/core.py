@@ -151,20 +151,51 @@ def enrich_with_trends(result: dict, geo: str, demo: bool = False, provider=None
     return result
 
 
-def trends_related(seed: str, geo: str, demo: bool = False) -> dict:
-    """Pencarian terkait Google Trends per kurun waktu persis seperti di trends.google.com (Top dan Naik),
-    diambil dari cache hasil riset yang baru saja dijalankan (tanpa permintaan baru ke Google bila masih segar).
-    Kurun yang kosong dicatat sebagai daftar kosong (Google memang tidak memberi data untuk topik kecil)."""
+_VARIANTS = None
+
+
+def _variant_providers() -> list:
+    """Google memberi contoh data yang sedikit berbeda untuk tiap permintaan (dan hanya 3 sampai 4 'Rising' untuk 24 jam,
+    sedangkan situsnya bisa menampilkan lebih banyak). Dua permintaan tambahan dengan bahasa/zona waktu berbeda
+    dihimpun (gabungan, tanpa duplikat) agar daftar lebih lengkap dan lebih dekat ke yang tampil di trends.google.com."""
+    global _VARIANTS
+    if _VARIANTS is None:
+        _VARIANTS = [explore.GoogleDirectProvider(hl="en-US", tz_minutes=0), explore.GoogleDirectProvider(hl="id", tz_minutes=0)]
+    return _VARIANTS
+
+
+def merge_related(lists: list[list[dict]]) -> list[dict]:
+    """Gabungkan beberapa daftar pencarian terkait: satu baris per query; 'naik' menang atas 'populer', nilai terbesar menang."""
+    best: dict[str, dict] = {}
+    for lst in lists:
+        for r in lst:
+            k = r["query"].lower()
+            cur = best.get(k)
+            if cur is None or (r["kind"] == "naik", r["breakout"], r["value"]) > (cur["kind"] == "naik", cur["breakout"], cur["value"]):
+                best[k] = r
+    rank = lambda r: (r["kind"] != "naik", not r["breakout"], -r["value"], r["query"])  # noqa: E731
+    return sorted(best.values(), key=rank)
+
+
+def trends_related(seed: str, geo: str, demo: bool = False, variants=None) -> dict:
+    """Pencarian terkait Google Trends per kurun waktu seperti di trends.google.com (Rising dan Top).
+    Permintaan pertama diambil dari cache hasil riset yang baru dijalankan; permintaan tambahan memakai bahasa/zona waktu
+    lain lalu digabung. Kurun yang kosong dicatat sebagai daftar kosong (Google memang tidak memberi data untuk topik kecil)."""
     from . import explore_service
+    variants = ([] if demo else _variant_providers()) if variants is None else variants
     out: dict[str, list[dict]] = {}
     for time_range, column in keyword_research.WINDOWS:
         key = column.replace("naik_", "")
-        try:
-            res = explore_service.run_booming(explore_service.normalize_booming(seed, geo, 0, time_range, "", explore_service.BOOMING_MAX_LIMIT), demo=demo)
-            out[key] = [{"query": i["query"], "kind": i["kind"], "label": i["label"], "value": i["value"],
-                         "breakout": bool(i.get("breakout"))} for i in res["items"]]
-        except (ExploreError, ValueError):
-            out[key] = []
+        params = explore_service.normalize_booming(seed, geo, 0, time_range, "", explore_service.BOOMING_MAX_LIMIT)
+        lists = []
+        for prov in (None, *variants):
+            try:
+                res = explore_service.run_booming(params, demo=demo, provider=prov, refresh=prov is not None)
+            except (ExploreError, ValueError):
+                continue
+            lists.append([{"query": i["query"], "kind": i["kind"], "label": i["label"], "value": i["value"],
+                           "breakout": bool(i.get("breakout"))} for i in res["items"]])
+        out[key] = merge_related(lists)
     return out
 
 
