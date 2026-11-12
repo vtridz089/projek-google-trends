@@ -1,0 +1,25 @@
+name: Diagnosa jaringan Trends
+
+# Manual: membuka halaman Explore Google Trends di browser sungguhan dan mencatat permintaan data yang dipakainya
+# (untuk mengetahui sumber Rising/Top queries di situsnya).
+on:
+  workflow_dispatch:
+    inputs:
+      kata:
+        default: "soal cpns"
+      kurun:
+        default: "now 1-d"
+
+jobs:
+  net:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright && playwright install --with-deps chromium
+      - env:
+          KATA: ${{ inputs.kata }}
+          KURUN: ${{ inputs.kurun }}
+        run: python tools/trends_net.py "$KATA" "$KURUN"
