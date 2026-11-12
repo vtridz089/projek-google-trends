@@ -504,3 +504,10 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 .trtabs { margin: 8px 0 6px; }
 .trsec.naik { border-left: 3px solid var(--accent); padding-left: 10px; }
 .trsec.top { border-left: 3px solid var(--border); padding-left: 10px; }
+
+/* saran judul per keyword */
+.kst { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.titlebtn { padding: 3px 10px; border-radius: 999px; font-size: .82rem; }
+.titlebtn[aria-expanded="true"] { background: var(--accent-soft); }
+.ktitles { display: grid; gap: 6px; }
+.titlerow { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }

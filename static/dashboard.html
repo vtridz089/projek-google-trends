@@ -387,6 +387,39 @@ async function loadKids(panel, r, d) {
     showKids(panel, r, d, merge([]), false, err.message);
   }
 }
+// Tiga saran judul per keyword (berdasarkan maksud pencarian). Dibuat dari pola judul, tanpa API berbayar.
+const ACRONYMS = new Set("cpns pns pppk asn bumn utbk snbt snbp tka toefl lpdp tni polri skd skb ukp ppg ojk bi pcpm pcam tpa rbb tiu twk tkp pdf sscasn sscn bkn id ui ut ipk sma smk sd smp".split(" "));
+const SMALL = new Set(["dan", "di", "ke", "dari", "yang", "untuk", "atau", "dengan", "pada", "dalam"]);
+function titleCase(q) {
+  return q.trim().split(/\s+/).map((w, i) => {
+    const lw = w.toLowerCase();
+    if (ACRONYMS.has(lw)) return lw.toUpperCase();
+    if (i > 0 && SMALL.has(lw)) return lw;
+    return lw.charAt(0).toUpperCase() + lw.slice(1);
+  }).join(" ");
+}
+function suggestTitles(query, maksud, pertanyaan) {
+  const K = titleCase(query).replace(/\?+$/, ""), yr = new Date().getFullYear();
+  const hasYear = /\b20\d\d\b/.test(query), Y = hasYear ? "" : " " + yr;
+  if (pertanyaan || /^(apa|apakah|bagaimana|cara|kenapa|mengapa|kapan|siapa|dimana|di mana|berapa)\b/i.test(query)) {
+    return [K + "? Jawaban Lengkap dan Terbaru" + Y, K + ": Penjelasan Mudah untuk Pemula", "Jawaban Tuntas: " + K + "? Ini yang Perlu Kamu Tahu"];
+  }
+  switch (maksud) {
+    case "komersial": return ["Rekomendasi " + K + " Terbaik" + Y, K + ": Perbandingan dan Cara Memilih yang Tepat", "Review " + K + ": Mana yang Paling Layak Dipilih?"];
+    case "transaksional": return [K + " Terpercaya: Daftar dan Mulai Sekarang", K + " Lengkap dan Terjangkau, Mulai dari Sini", "Cara Mudah Mendapatkan " + K + Y];
+    case "navigasi": return [K + ": Link Resmi dan Cara Mengaksesnya", "Panduan Login dan Penggunaan " + K, K + " Resmi: Info Terbaru" + Y];
+    default: return [K + ": Panduan Lengkap dan Terbaru" + Y, "7 Hal yang Perlu Kamu Tahu tentang " + K, K + ": Pengertian, Cara, dan Tips untuk Pemula"];
+  }
+}
+function titlesBox(r) {
+  const box = el("div", { class: "kkids ktitles", hidden: "hidden" });
+  const fill = () => box.replaceChildren(el("b", { text: "3 saran judul" }), ...suggestTitles(r.query, r.maksud, r.pertanyaan).map(t => {
+    const c = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin judul" });
+    c.addEventListener("click", async () => flash(c, await copyText(t), "Judul disalin"));
+    return el("div", { class: "titlerow" }, [el("span", { text: t }), c]);
+  }));
+  return { box, fill };
+}
 function row(r, d) {
   const copy = el("button", { type: "button", class: "copy", text: "Salin", title: "Salin “" + r.query + "”" });
   copy.addEventListener("click", async () => flash(copy, await copyText(r.query), "“" + r.query + "” disalin"));
@@ -399,6 +432,13 @@ function row(r, d) {
   if (r.pertanyaan) tags.append(el("span", { class: "pill", text: "pertanyaan" }));
   if (r.longtail) tags.append(el("span", { class: "pill", text: "long-tail" }));
   const panel = el("div", { class: "kkids", hidden: "hidden" });
+  const tb = titlesBox(r);
+  const titleBtn = el("button", { type: "button", class: "titlebtn", text: "3 judul", "aria-expanded": "false", title: "Lihat 3 saran judul untuk keyword ini" });
+  titleBtn.addEventListener("click", () => {
+    const open = titleBtn.getAttribute("aria-expanded") === "true";
+    titleBtn.setAttribute("aria-expanded", String(!open)); tb.box.hidden = open;
+    if (!open) tb.fill();
+  });
   const name = el("button", { type: "button", class: "keyword-link", text: r.query, "aria-expanded": "false",
                               title: "Klik untuk melihat turunan keyword ini" });
   name.addEventListener("click", () => {
@@ -410,10 +450,10 @@ function row(r, d) {
     el("span", { class: "no", text: String(r.rank) }),
     el("div", { class: "kw-wrap" }, [el("div", { class: "kw" }, [name]), tags,
       el("div", { class: "src", text: r.sumber.map(s => SOURCE_LABEL[s]).join(" · ") }),
-      el("div", { class: "kst" }, [statusControl(r.query, d.seed)])]),
+      el("div", { class: "kst" }, [statusControl(r.query, d.seed), titleBtn])]),
     gainCell(r.naik_24j, "24 jam", 1), gainCell(r.naik_7h, "7 hari", 2), gainCell(r.naik_90h, "90 hari", 3),
     el("div", { class: "acts" }, [copy, dig, serp]),
-    panel,
+    panel, tb.box,
   ]);
 }
 function groupHead(text, small) { return el("li", { class: "ghead" }, [text, el("small", { text: small })]); }
