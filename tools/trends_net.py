@@ -41,5 +41,14 @@ with sync_playwright() as p:
         print("\n###", m, u[:300])
         if post:
             print("POST:", post[:600])
-        print("BODY:", body[:1200].replace("\n", " "))
+        if "relatedsearches" in u:
+            print("FULLURL:", urllib.parse.unquote(u)[:1500])
+            try:
+                data = json.loads(body[body.index("{"):])
+                for n, rl in enumerate((data.get("default") or {}).get("rankedList") or []):
+                    print(f"RANKEDLIST[{n}] n={len(rl.get('rankedKeyword') or [])}:",
+                          [(x.get("query") or (x.get("topic") or {}).get("title"), x.get("value"), x.get("formattedValue")) for x in rl.get("rankedKeyword") or []])
+            except Exception as e:  # noqa: BLE001
+                print("PARSE:", e)
+        print("BODY:", body[:300].replace("\n", " "))
     b.close()
