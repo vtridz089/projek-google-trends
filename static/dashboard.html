@@ -699,6 +699,9 @@ function trendsPanel(it) {
     wrap.append(el("p", { class: "sub", text: "Google tidak mengembalikan pencarian terkait untuk topik ini dalam " + WIN_LABEL[w] + " terakhir (pencariannya terlalu kecil); hasil yang sama akan terlihat di trends.google.com. Coba kurun waktu lain di atas." }));
     return wrap;
   }
+  const dari = ((it.summary || {}).terkait_dari || {})[w];
+  if (dari) wrap.append(el("p", { class: "notice", text: "Google tidak punya data untuk “" + it.seed.toLowerCase() + "” pada kurun ini, jadi yang ditampilkan adalah data kata yang lebih umum: “" + dari + "”." }));
+  const turunan = ((it.summary || {}).turunan || []).filter(t => t.w === w);
   const mk = (r, i, kind) => {
     const full = byQ.get(r.query) || {};
     const gain = { label: r.label, value: r.value, breakout: r.breakout };
@@ -709,7 +712,21 @@ function trendsPanel(it) {
     return x;
   };
   const nRise = list.filter(r => r.kind === "naik").length, nTop = list.length - nRise;
+  const tRows = turunan.flatMap(t => t.rows.map(r => Object.assign({}, r, { dari: t.dari })));
   const section = (kind) => {
+    if (kind === "turunan") {
+      const box = el("div", { class: "trsec top" });
+      if (!tRows.length) { box.append(el("p", { class: "sub", text: "Tidak ada data Rising/Top untuk keyword turunan teratas pada kurun ini." })); return box; }
+      box.append(el("p", { class: "sub", text: "Rising dan Top Google Trends untuk keyword turunan teratas topik ini, apa adanya dari Google (tiap baris menyebut keyword asalnya)." }),
+        el("div", { class: "khead" }, ["", "Keyword", "24 jam", "7 hari", "90 hari", ""].map(t => el("span", { text: t }))),
+        el("ol", { class: "ktable" }, tRows.map((r, i) => {
+          const li = row(mk(r, i, r.kind === "naik" ? "naik" : "top"), d);
+          li.querySelector(".tags").append(el("span", { class: "pill", text: "dari: " + r.dari, title: "Keyword turunan yang dicek ke Google Trends" }),
+            ...(r.kind === "naik" ? [] : [el("span", { class: "pill", text: "Top " + r.value })]));
+          return li;
+        })));
+      return box;
+    }
     const rows = list.filter(r => (r.kind === "naik") === (kind === "naik"));
     const box = el("div", { class: "trsec " + kind });
     if (!rows.length) {
@@ -736,7 +753,7 @@ function trendsPanel(it) {
     tabs.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === kind)));
     body.replaceChildren(section(kind));
   };
-  [["naik", "Rising queries (" + nRise + ")"], ["top", "Top queries (" + nTop + ")"]].forEach(([k, t]) => {
+  [["naik", "Rising queries (" + nRise + ")"], ["top", "Top queries (" + nTop + ")"], ["turunan", "Dari keyword turunan (" + tRows.length + ")"]].forEach(([k, t]) => {
     const btn = el("button", { type: "button", "data-k": k, text: t, role: "tab", "aria-pressed": "false" });
     btn.addEventListener("click", () => show(k));
     tabs.append(btn);

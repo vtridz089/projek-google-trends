@@ -247,7 +247,8 @@ def test_default_runner_uses_youtube_and_bing(monkeypatch):
     def fake(seed, geo, depth, **kw):
         seen.update(kw); return {"seed": seed, "items": [], "sumber": {"saran": "google"}, "errors": []}
     monkeypatch.setattr(core.keyword_research, "run_keywords", fake)
-    monkeypatch.setattr(core, "trends_related", lambda *a, **k: {})
+    monkeypatch.setattr(core, "related_with_fallback", lambda *a, **k: ({}, {}))
+    monkeypatch.setattr(core, "related_of_derived", lambda *a, **k: [])
     core._default_runner("CPNS 2026", "ID")
     assert seen["channels"] == ("youtube", "bing")
 
@@ -293,3 +294,36 @@ def test_trends_related_is_google_verbatim_without_filtering():
 def test_trends_related_marks_failed_windows_as_none_not_empty():
     out = core.trends_related("cpns 2026", "ID", provider=RawProvider(fail_on=("now 7-d",)))
     assert out["7h"] is None and len(out["24j"]) == 5
+
+
+class EmptyThenBroader(RawProvider):
+    """Seed spesifik dikosongkan Google; kata yang lebih umum punya data."""
+    def explore(self, kws, geo, cat, tr, gprop="", parts=()):
+        self.calls.append((kws[0], tr))
+        if kws[0] == "pcpm bi":
+            return {"related": {"pcpm bi": {"top": [{"query": "soal pcpm bi", "value": 100, "label": "100"}], "rising": []}}}
+        return {"related": {kws[0]: {"top": [], "rising": []}}}
+
+
+def test_broader_terms():
+    assert core.broader_terms("bimbel pcpm bi") == ["pcpm bi", "bimbel pcpm"]
+    assert core.broader_terms("lpdp") == [] and core.broader_terms("tes toefl") == ["toefl"]  # "tes" terlalu pendek
+
+
+def test_empty_windows_fall_back_to_broader_term_and_are_marked():
+    out, dari = core.related_with_fallback("bimbel pcpm bi", "ID", provider=EmptyThenBroader())
+    assert dari == {"24j": "pcpm bi", "7h": "pcpm bi", "90h": "pcpm bi"}
+    assert out["24j"][0]["query"] == "soal pcpm bi"
+
+
+def test_failed_windows_are_not_replaced_by_fallback():
+    out, dari = core.related_with_fallback("bimbel pcpm bi", "ID", provider=RawProvider(fail_on=("now 1-d", "now 7-d", "today 3-m")))
+    assert out == {"24j": None, "7h": None, "90h": None} and dari == {}
+
+
+def test_related_of_derived_collects_google_rows_per_keyword():
+    items = [item("cpns 2026", 1), {**item("soal cpns 2026", 2), "skor": 50}, {**item("formasi cpns 2026", 3), "skor": 80}]
+    out = core.related_of_derived(items, "cpns 2026", "ID", provider=RawProvider(), limit=2)
+    assert [(o["dari"], o["w"]) for o in out] == [("formasi cpns 2026", "7h"), ("formasi cpns 2026", "90h"),
+                                                    ("soal cpns 2026", "7h"), ("soal cpns 2026", "90h")]
+    assert out[0]["rows"][0]["query"] == "cpns 2026"

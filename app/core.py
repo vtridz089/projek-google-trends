@@ -155,36 +155,95 @@ def _is_breakout_label(label: str, value: int) -> bool:
     return str(label).strip().lower() in ("breakout", "pesat") or value >= explore_service.BREAKOUT_VALUE
 
 
+def fetch_related(provider, term: str, geo: str, time_range: str) -> list[dict] | None:
+    """Rising dan Top Google Trends untuk satu kata, persis seperti jawaban Google. ``None`` bila gagal diambil."""
+    try:
+        res = provider.explore([term], geo, 0, time_range, "", ("related",))
+    except ExploreError:
+        return None
+    related = res.get("related") or {}
+    rel = related.get(term) or next(iter(related.values()), None) or {}
+    rows = []
+    for kind, name in (("naik", "rising"), ("populer", "top")):
+        for r in rel.get(name) or []:
+            value = int(r.get("value") or 0)
+            label = str(r.get("label") or value)
+            rows.append({"query": r["query"], "kind": kind, "label": label, "value": value,
+                         "breakout": kind == "naik" and _is_breakout_label(label, value)})
+    return rows
+
+
 def trends_related(seed: str, geo: str, demo: bool = False, provider=None) -> dict:
     """Pencarian terkait Google Trends per kurun waktu, **persis seperti jawaban Google** (tanpa disaring):
     urutan Google, angka dan label Google (``+130%``, ``Pesat``, ``100``), dan kata seed sendiri tetap ikut bila Google
-    menyertakannya. Hanya dipakai untuk ditampilkan; tidak dicampur dengan sumber lain. Kurun yang gagal diambil
-    bernilai ``None`` (bedakan dari daftar kosong, yaitu Google memang tidak memberi data)."""
+    menyertakannya. Kurun yang gagal diambil bernilai ``None`` (bedakan dari daftar kosong, yaitu Google memang tidak
+    memberi data)."""
     provider = provider or explore_service.get_provider(demo)
-    out: dict[str, list[dict] | None] = {}
+    return {column.replace("naik_", ""): fetch_related(provider, seed, geo, time_range)
+            for time_range, column in keyword_research.WINDOWS}
+
+
+def broader_terms(seed: str) -> list[str]:
+    """Kata yang lebih umum dari seed, untuk dicoba bila Google mengosongkan seed yang terlalu spesifik:
+    tanpa kata pertama ("bimbel pcpm bi" -> "pcpm bi"), lalu tanpa kata terakhir ("tryout cpns 2026" -> "tryout cpns")."""
+    w = seed.split()
+    out = []
+    for cand in (" ".join(w[1:]), " ".join(w[:-1])):
+        if cand and len(cand) >= 4 and cand != seed and cand not in out:
+            out.append(cand)
+    return out
+
+
+def related_with_fallback(seed: str, geo: str, demo: bool = False, provider=None) -> tuple[dict, dict]:
+    """``trends_related`` + untuk kurun yang dikosongkan Google, data kata yang lebih umum.
+    Mengembalikan (daftar per kurun, {kurun: kata_pengganti}); penggantinya ditandai jelas di tampilan."""
+    provider = provider or explore_service.get_provider(demo)
+    out = trends_related(seed, geo, demo, provider)
+    dari: dict[str, str] = {}
     for time_range, column in keyword_research.WINDOWS:
         key = column.replace("naik_", "")
-        try:
-            res = provider.explore([seed], geo, 0, time_range, "", ("related",))
-        except ExploreError:
-            out[key] = None
+        if out.get(key) != []:  # None (gagal) tidak diganti: gagal bukan kosong
             continue
-        related = res.get("related") or {}
-        rel = related.get(seed) or next(iter(related.values()), None) or {}
-        rows = []
-        for kind, name in (("naik", "rising"), ("populer", "top")):
-            for r in rel.get(name) or []:
-                value = int(r.get("value") or 0)
-                label = str(r.get("label") or value)
-                rows.append({"query": r["query"], "kind": kind, "label": label, "value": value,
-                             "breakout": kind == "naik" and _is_breakout_label(label, value)})
-        out[key] = rows
+        for term in broader_terms(seed):
+            rows = fetch_related(provider, term, geo, time_range)
+            if rows:
+                out[key], dari[key] = rows, term
+                break
+    return out, dari
+
+
+TURUNAN_PER_SEED = 5
+TURUNAN_WINDOWS = ("now 7-d", "today 3-m")
+
+
+def related_of_derived(items: list[dict], seed: str, geo: str, demo: bool = False, provider=None,
+                       limit: int = TURUNAN_PER_SEED) -> list[dict]:
+    """Rising/Top Google Trends untuk beberapa keyword turunan teratas (bukan hanya topiknya), supaya data Trends
+    tidak berhenti di topik yang kecil. Hasil apa adanya dari Google, tiap baris menyebut keyword asalnya."""
+    provider = provider or explore_service.get_provider(demo)
+    cands = sorted((r for r in items if r["query"] != seed and len(r["query"].split()) >= 2),
+                   key=lambda r: -(r.get("skor") or 0))[:limit]
+    col = dict(keyword_research.WINDOWS)
+    out, streak = [], 0
+    for r in cands:
+        for tr in TURUNAN_WINDOWS:
+            rows = fetch_related(provider, r["query"], geo, tr)
+            if rows is None:
+                streak += 1
+                if streak >= TREND_FAIL_STREAK:
+                    return out
+                continue
+            streak = 0
+            if rows:
+                out.append({"dari": r["query"], "w": col[tr].replace("naik_", ""), "rows": rows})
     return out
 
 
 def _default_runner(seed: str, geo: str, demo: bool = False) -> dict:
     result = keyword_research.run_keywords(seed, geo, "cepat", demo=demo, refresh=True, channels=CHANNELS)
-    result["trends_terkait"] = trends_related(seed.lower(), geo, demo)  # huruf kecil, lihat run_keywords
+    seed = seed.lower()  # huruf kecil, lihat run_keywords
+    result["trends_terkait"], result["trends_dari"] = related_with_fallback(seed, geo, demo)
+    result["trends_turunan"] = related_of_derived(result.get("items") or [], seed, geo, demo)
     return enrich_with_trends(result, geo, demo=demo)
 
 
@@ -216,7 +275,9 @@ def _save_ok(conn, slug: str, seed: str, geo: str, result: dict, now: float) -> 
                "bing": sum(1 for r in items if "bing" in (r.get("sumber") or [])),
                "trends_cek": (result.get("trends_cek") or {}).get("dicek", 0),
                "trends_naik": (result.get("trends_cek") or {}).get("naik", 0),
-               "terkait": result.get("trends_terkait") or {}}
+               "terkait": result.get("trends_terkait") or {},
+               "terkait_dari": result.get("trends_dari") or {},
+               "turunan": result.get("trends_turunan") or []}
     conn.execute("""INSERT OR REPLACE INTO core_research
         (platform, seed, geo, status, items, all_queries, summary, source, error, fetched_at)
         VALUES (?, ?, ?, 'ok', ?, ?, ?, ?, ?, ?)""",
