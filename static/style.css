@@ -501,3 +501,6 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 .trlist { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
 .trlist li { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 @media (max-width: 700px) { .trcols { grid-template-columns: 1fr; } }
+.trtabs { margin: 8px 0 6px; }
+.trsec.naik { border-left: 3px solid var(--accent); padding-left: 10px; }
+.trsec.top { border-left: 3px solid var(--border); padding-left: 10px; }

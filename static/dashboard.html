@@ -645,6 +645,7 @@ function winItems(it) {
 }
 // Pencarian terkait Google Trends (Naik dan Top) untuk kurun waktu terpilih, sama seperti di trends.google.com.
 // Barisnya memakai tampilan yang sama dengan keyword lain (Dipakai/Tidak, kenaikan, Salin, Telusuri, Google).
+let trTab = "naik";  // Rising queries lebih berguna, jadi jadi tampilan awal
 function trendsPanel(it) {
   const w = coreWin || "24j", list = ((it.summary || {}).terkait || {})[w];
   const d = { seed: it.seed, geo: "ID", items: it.items };
@@ -667,19 +668,41 @@ function trendsPanel(it) {
     if (kind === "naik") x["naik_" + w] = gain;
     return x;
   };
-  const section = (title, kind, note) => {
+  const nRise = list.filter(r => r.kind === "naik").length, nTop = list.length - nRise;
+  const section = (kind) => {
     const rows = list.filter(r => (r.kind === "naik") === (kind === "naik"));
-    const head = el("div", { class: "khead" }, ["", "Keyword", "24 jam", "7 hari", "90 hari", ""].map(t => el("span", { text: t })));
-    const box = el("div", {}, [el("span", { class: "sub", text: title + " · " + rows.length + " keyword" + (note || "") })]);
-    if (!rows.length) { box.append(el("p", { class: "sub", text: "Tidak ada." })); return box; }
-    box.append(head, el("ol", { class: "ktable" }, rows.map((r, i) => {
-      const li = row(mk(r, i, kind), d);
-      if (kind !== "naik") li.querySelector(".tags").append(el("span", { class: "pill", text: "Top " + r.value, title: "Nilai popularitas Google Trends (0 sampai 100)" }));
-      return li;
-    })));
+    const box = el("div", { class: "trsec " + kind });
+    if (!rows.length) {
+      box.append(el("p", { class: "sub", text: kind === "naik"
+        ? "Google tidak mencatat Rising queries untuk topik ini dalam " + WIN_LABEL[w] + " terakhir" + (nTop ? ", hanya Top queries (lihat tab Top queries atau pilih kurun waktu lain di atas)." : ".")
+        : "Google tidak mencatat Top queries untuk topik ini dalam " + WIN_LABEL[w] + " terakhir." }));
+      return box;
+    }
+    box.append(el("p", { class: "sub", text: kind === "naik"
+      ? "Pencarian yang naik paling tajam dibanding periode sebelumnya; “Breakout” berarti naik lebih dari 5.000%."
+      : "Pencarian yang paling sering dicari bersama topik ini; nilai 0 sampai 100 (100 = paling sering)." }));
+    box.append(el("div", { class: "khead" }, ["", "Keyword", "24 jam", "7 hari", "90 hari", ""].map(t => el("span", { text: t }))),
+      el("ol", { class: "ktable" }, rows.map((r, i) => {
+        const li = row(mk(r, i, kind), d);
+        if (kind !== "naik") li.querySelector(".tags").append(el("span", { class: "pill", text: "Top " + r.value, title: "Nilai popularitas Google Trends (0 sampai 100)" }));
+        return li;
+      })));
     return box;
   };
-  wrap.append(section("Rising queries", "naik"), section("Top queries", "top", " (nilai 0 sampai 100)"));
+  const tabs = el("div", { class: "seg trtabs", role: "tablist" });
+  const body = el("div", {});
+  const show = (kind) => {
+    trTab = kind;
+    tabs.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.k === kind)));
+    body.replaceChildren(section(kind));
+  };
+  [["naik", "Rising queries (" + nRise + ")"], ["top", "Top queries (" + nTop + ")"]].forEach(([k, t]) => {
+    const btn = el("button", { type: "button", "data-k": k, text: t, role: "tab", "aria-pressed": "false" });
+    btn.addEventListener("click", () => show(k));
+    tabs.append(btn);
+  });
+  wrap.append(tabs, body);
+  show(trTab);
   return wrap;
 }
 function fillSeed(box, it) {
