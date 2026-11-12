@@ -15,7 +15,7 @@ import threading
 import time
 from contextlib import closing
 
-from . import db, explore, keyword_research
+from . import db, explore, explore_service, keyword_research
 from .explore import ExploreError
 
 STALE_SECONDS = 24 * 3600
@@ -151,51 +151,34 @@ def enrich_with_trends(result: dict, geo: str, demo: bool = False, provider=None
     return result
 
 
-_VARIANTS = None
+def _is_breakout_label(label: str, value: int) -> bool:
+    return str(label).strip().lower() in ("breakout", "pesat") or value >= explore_service.BREAKOUT_VALUE
 
 
-def _variant_providers() -> list:
-    """Google memberi contoh data yang sedikit berbeda untuk tiap permintaan (dan hanya 3 sampai 4 'Rising' untuk 24 jam,
-    sedangkan situsnya bisa menampilkan lebih banyak). Dua permintaan tambahan dengan bahasa/zona waktu berbeda
-    dihimpun (gabungan, tanpa duplikat) agar daftar lebih lengkap dan lebih dekat ke yang tampil di trends.google.com."""
-    global _VARIANTS
-    if _VARIANTS is None:
-        _VARIANTS = [explore.GoogleDirectProvider(hl="en-US", tz_minutes=0), explore.GoogleDirectProvider(hl="id", tz_minutes=0)]
-    return _VARIANTS
-
-
-def merge_related(lists: list[list[dict]]) -> list[dict]:
-    """Gabungkan beberapa daftar pencarian terkait: satu baris per query; 'naik' menang atas 'populer', nilai terbesar menang."""
-    best: dict[str, dict] = {}
-    for lst in lists:
-        for r in lst:
-            k = r["query"].lower()
-            cur = best.get(k)
-            if cur is None or (r["kind"] == "naik", r["breakout"], r["value"]) > (cur["kind"] == "naik", cur["breakout"], cur["value"]):
-                best[k] = r
-    rank = lambda r: (r["kind"] != "naik", not r["breakout"], -r["value"], r["query"])  # noqa: E731
-    return sorted(best.values(), key=rank)
-
-
-def trends_related(seed: str, geo: str, demo: bool = False, variants=None) -> dict:
-    """Pencarian terkait Google Trends per kurun waktu seperti di trends.google.com (Rising dan Top).
-    Permintaan pertama diambil dari cache hasil riset yang baru dijalankan; permintaan tambahan memakai bahasa/zona waktu
-    lain lalu digabung. Kurun yang kosong dicatat sebagai daftar kosong (Google memang tidak memberi data untuk topik kecil)."""
-    from . import explore_service
-    variants = ([] if demo else _variant_providers()) if variants is None else variants
-    out: dict[str, list[dict]] = {}
+def trends_related(seed: str, geo: str, demo: bool = False, provider=None) -> dict:
+    """Pencarian terkait Google Trends per kurun waktu, **persis seperti jawaban Google** (tanpa disaring):
+    urutan Google, angka dan label Google (``+130%``, ``Pesat``, ``100``), dan kata seed sendiri tetap ikut bila Google
+    menyertakannya. Hanya dipakai untuk ditampilkan; tidak dicampur dengan sumber lain. Kurun yang gagal diambil
+    bernilai ``None`` (bedakan dari daftar kosong, yaitu Google memang tidak memberi data)."""
+    provider = provider or explore_service.get_provider(demo)
+    out: dict[str, list[dict] | None] = {}
     for time_range, column in keyword_research.WINDOWS:
         key = column.replace("naik_", "")
-        params = explore_service.normalize_booming(seed, geo, 0, time_range, "", explore_service.BOOMING_MAX_LIMIT)
-        lists = []
-        for prov in (None, *variants):
-            try:
-                res = explore_service.run_booming(params, demo=demo, provider=prov, refresh=prov is not None)
-            except (ExploreError, ValueError):
-                continue
-            lists.append([{"query": i["query"], "kind": i["kind"], "label": i["label"], "value": i["value"],
-                           "breakout": bool(i.get("breakout"))} for i in res["items"]])
-        out[key] = merge_related(lists)
+        try:
+            res = provider.explore([seed], geo, 0, time_range, "", ("related",))
+        except ExploreError:
+            out[key] = None
+            continue
+        related = res.get("related") or {}
+        rel = related.get(seed) or next(iter(related.values()), None) or {}
+        rows = []
+        for kind, name in (("naik", "rising"), ("populer", "top")):
+            for r in rel.get(name) or []:
+                value = int(r.get("value") or 0)
+                label = str(r.get("label") or value)
+                rows.append({"query": r["query"], "kind": kind, "label": label, "value": value,
+                             "breakout": kind == "naik" and _is_breakout_label(label, value)})
+        out[key] = rows
     return out
 
 

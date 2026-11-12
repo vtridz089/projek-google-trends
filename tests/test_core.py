@@ -262,27 +262,34 @@ def test_trends_related_is_saved_per_window_for_display():
     assert first["summary"]["terkait"]["24j"][0]["query"] == "formasi cpns 2026" and first["summary"]["terkait"]["7h"] == []
 
 
-def rel(q, kind, value, label=None, breakout=False):
-    return {"query": q, "kind": kind, "label": label or str(value), "value": value, "breakout": breakout}
+class RawProvider:
+    """Jawaban Google apa adanya: urutan, label, dan kata seed sendiri."""
+    name = "fake"
 
+    def __init__(self, fail_on=()):
+        self.fail_on, self.calls = fail_on, []
 
-def test_merge_related_unions_requests_without_duplicates():
-    a = [rel("sccasn", "naik", 40, "+40%"), rel("formasi cpns", "populer", 100)]
-    b = [rel("SCCASN", "naik", 250, "+250%"), rel("formasi cpns", "naik", 30, "+30%"), rel("e materai", "naik", 5000, "Breakout", True)]
-    out = core.merge_related([a, b])
-    assert [r["query"] for r in out] == ["e materai", "SCCASN", "formasi cpns"]   # Breakout, lalu persen terbesar
-    assert out[1]["value"] == 250 and out[2]["kind"] == "naik"                     # naik menang atas populer
-    assert core.merge_related([]) == []
-
-
-def test_trends_related_merges_extra_requests_and_survives_failures(monkeypatch):
-    calls = []
-    def fake(params, *, demo=False, refresh=False, provider=None, now=None):
-        calls.append(provider)
-        if provider == "gagal":
+    def explore(self, kws, geo, cat, tr, gprop="", parts=()):
+        self.calls.append(tr)
+        if tr in self.fail_on:
             raise ExploreError("429")
-        return {"items": [{"query": "q-" + str(provider), "kind": "naik", "label": "+10%", "value": 10, "breakout": False}]}
-    monkeypatch.setattr(core.explore_service if hasattr(core, "explore_service") else __import__("app.explore_service", fromlist=["x"]), "run_booming", fake)
-    out = core.trends_related("cpns 2026", "ID", variants=["v1", "gagal"])
-    assert set(out) == {"24j", "7h", "90h"} and [r["query"] for r in out["24j"]] == ["q-None", "q-v1"]
-    assert len(calls) == 9
+        return {"related": {kws[0]: {
+            "top": [{"query": "formasi cpns", "value": 100, "label": "100"}, {"query": "cpns 2026", "value": 90, "label": "90"}],
+            "rising": [{"query": "cpns 2026", "value": 130, "label": "+130%"},          # sama dengan seed: tetap ikut
+                       {"query": "sccasn", "value": 5000, "label": "Pesat"},
+                       {"query": "manggala agni", "value": 40, "label": "+40%"}]}}}
+
+
+def test_trends_related_is_google_verbatim_without_filtering():
+    out = core.trends_related("cpns 2026", "ID", provider=RawProvider())
+    assert set(out) == {"24j", "7h", "90h"}
+    rows = out["24j"]
+    assert [(r["query"], r["kind"], r["label"]) for r in rows] == [
+        ("cpns 2026", "naik", "+130%"), ("sccasn", "naik", "Pesat"), ("manggala agni", "naik", "+40%"),
+        ("formasi cpns", "populer", "100"), ("cpns 2026", "populer", "90")]           # urutan Google, seed ikut
+    assert [r["breakout"] for r in rows[:3]] == [False, True, False]
+
+
+def test_trends_related_marks_failed_windows_as_none_not_empty():
+    out = core.trends_related("cpns 2026", "ID", provider=RawProvider(fail_on=("now 7-d",)))
+    assert out["7h"] is None and len(out["24j"]) == 5
