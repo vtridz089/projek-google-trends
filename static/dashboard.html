@@ -699,6 +699,7 @@ function trendsPanel(it) {
     wrap.append(el("p", { class: "sub", text: "Google tidak mengembalikan pencarian terkait untuk topik ini dalam " + WIN_LABEL[w] + " terakhir (pencariannya terlalu kecil); hasil yang sama akan terlihat di trends.google.com. Coba kurun waktu lain di atas." }));
     return wrap;
   }
+  if ((it.summary || {}).terkait_web) wrap.append(el("p", { class: "sub", text: "Data lengkap antarmuka Google Trends (sampai 30 Rising dan 30 Top), diambil " + fmtStamp((it.summary || {}).terkait_web) + "." }));
   const dari = ((it.summary || {}).terkait_dari || {})[w];
   if (dari) wrap.append(el("p", { class: "notice", text: "Google tidak punya data untuk “" + it.seed.toLowerCase() + "” pada kurun ini, jadi yang ditampilkan adalah data kata yang lebih umum: “" + dari + "”." }));
   const turunan = ((it.summary || {}).turunan || []).filter(t => t.w === w);
@@ -708,7 +709,7 @@ function trendsPanel(it) {
     // Hanya angka Google untuk kurun terpilih; kenaikan hasil hitungan lain tidak dicampur ke baris ini.
     const x = Object.assign({ maksud_label: "", pertanyaan: false, longtail: false }, full,
       { rank: i + 1, sumber: [kind === "naik" ? "naik" : "populer"], naik_24j: null, naik_7h: null, naik_90h: null, baru: false });
-    if (kind === "naik") x["naik_" + w] = gain;
+    if (kind === "naik" && r.value > 0) x["naik_" + w] = gain;
     return x;
   };
   const nRise = list.filter(r => r.kind === "naik").length, nTop = list.length - nRise;
@@ -741,7 +742,10 @@ function trendsPanel(it) {
     box.append(el("div", { class: "khead" }, ["", "Keyword", "24 jam", "7 hari", "90 hari", ""].map(t => el("span", { text: t }))),
       el("ol", { class: "ktable" }, rows.map((r, i) => {
         const li = row(mk(r, i, kind), d);
-        if (kind !== "naik") li.querySelector(".tags").append(el("span", { class: "pill", text: "Top " + r.value, title: "Nilai popularitas Google Trends (0 sampai 100)" }));
+        const tags = li.querySelector(".tags");
+        if (kind !== "naik") tags.append(el("span", { class: "pill", text: "Top " + r.value + (r.change != null ? " · " + (r.change > 0 ? "+" : "") + r.change + "%" : ""), title: "Nilai popularitas Google Trends (0 sampai 100) dan perubahannya" }));
+        else if (r.value <= 0) tags.append(el("span", { class: "pill", text: r.label, title: "Perubahan dibanding periode sebelumnya" }));
+        else if (r.interest != null) tags.append(el("span", { class: "pill", text: "minat " + r.interest, title: "Minat penelusuran (0 sampai 100)" }));
         return li;
       })));
     return box;

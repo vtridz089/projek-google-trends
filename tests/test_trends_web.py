@@ -30,3 +30,37 @@ def test_rejects_unknown_or_missing_shapes_instead_of_guessing():
 
 def test_format_change_matches_trends_site():
     assert format_change(130) == "+130%" and format_change(-7) == "-7%" and format_change(0) == "+0%"
+
+
+def _parsed():
+    return {"term": "soal cpns",
+            "rising": [{"query": "sscasn bkn", "change": 5000, "interest": 3}, {"query": "bank soal cpns", "change": 90, "interest": 5},
+                       {"query": "jenis soal cpns", "change": -50, "interest": 2}],
+            "top": [{"query": "soal cpns 2026", "interest": 100, "change": 6}]}
+
+
+def test_panel_rows_keep_google_order_and_label_breakout():
+    from app.trends_web import panel_rows
+    rows = panel_rows(_parsed())
+    assert [(r["query"], r["kind"], r["label"]) for r in rows] == [
+        ("sscasn bkn", "naik", "Breakout"), ("bank soal cpns", "naik", "+90%"), ("jenis soal cpns", "naik", "-50%"),
+        ("soal cpns 2026", "populer", "100")]
+    assert rows[0]["breakout"] and not rows[1]["breakout"] and rows[3]["change"] == 6
+
+
+def test_file_roundtrip_and_missing_or_broken_file(tmp_path, monkeypatch):
+    from app import trends_web as tw
+    p = tmp_path / "w.json"
+    monkeypatch.setenv("TRENDWATCH_TRENDS_WEB", str(p))
+    assert tw.load() == {} and tw.rows_for("jadiasn", "cpns 2026") == ({}, None)
+    tw.write({tw.key("jadiasn", "CPNS 2026"): {"24j": {**_parsed_lists(), "diambil": 1000.0}}})
+    rows, at = tw.rows_for("jadiasn", "CPNS 2026")
+    assert at == 1000.0 and len(rows["24j"]) == 4 and "7h" not in rows
+    p.write_text("{rusak", encoding="utf-8")
+    import os; os.utime(p, (os.path.getmtime(p) + 5, os.path.getmtime(p) + 5))
+    assert tw.load() == {}
+
+
+def _parsed_lists():
+    d = _parsed()
+    return {"rising": d["rising"], "top": d["top"]}

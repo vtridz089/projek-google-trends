@@ -242,3 +242,22 @@ dan kerangka bab laporan PKL di [docs/kerangka-laporan.md](docs/kerangka-laporan
 - Penjadwalan Booming otomatis untuk daftar topik instansi (mis. BUMN, kementerian) dan menyimpan riwayatnya.
 - Notifikasi (email/Telegram) bila ada pencarian Breakout baru untuk topik pantauan.
 - Ekspor ke Excel (.xlsx) dengan grafik.
+
+
+## Data Trends lengkap (Rising dan Top sampai 30 baris)
+
+Jalur data Google Trends yang dipakai server hanya memberi 3 sampai 8 baris Rising. Antarmuka baru situs Trends memberi sampai
+30 Rising dan 30 Top (dengan angka perubahan), tetapi **hanya ke sesi browser yang sudah login ke akun Google**, sehingga tidak bisa
+diambil dari server. Cara mengambilnya di komputer Anda:
+
+1. Pasang sekali: `pip install -r requirements.txt playwright` lalu `playwright install chromium`.
+2. Tutup semua jendela Chrome, lalu buka Chrome dengan profil khusus dan port debug (Windows):
+   `& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome-trends"`
+3. Di jendela itu, **login ke akun Google** (disarankan akun khusus, bukan akun pribadi) dan biarkan jendelanya terbuka.
+4. Uji satu kata: `python tools/trends_browser.py "soal cpns" --cdp http://localhost:9222` (harus `RISING=30 TOP=30`).
+5. Ambil semua keyword inti: `python tools/trends_full.py --cdp http://localhost:9222` (sekitar 1 jam; bisa dihentikan dan dilanjutkan;
+   `--platform jadiasn` untuk satu platform).
+6. Hasilnya di `data/trends_web.json`. Muat ulang aplikasi; panel Trends memakainya otomatis. Untuk membagikan ke tim: `git add data/trends_web.json`, commit, push.
+
+Catatan: ini otomatisasi browser pada layanan Google dan memakai antarmuka internal yang bisa berubah sewaktu-waktu. Bila gagal, aplikasi
+tetap memakai data dari jalur lama.

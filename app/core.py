@@ -15,7 +15,7 @@ import threading
 import time
 from contextlib import closing
 
-from . import db, explore, explore_service, keyword_research
+from . import db, explore, explore_service, keyword_research, trends_web
 from .explore import ExploreError
 
 STALE_SECONDS = 24 * 3600
@@ -385,8 +385,14 @@ def listing(slug: str, geo: str = GEO, now: float | None = None) -> dict:
             items.append({"seed": seed, "status": "belum", "items": [], "summary": None}); continue
         if r["status"] == "ok":
             stamps.append(r["fetched_at"]); sources.add(r["source"])
-        items.append({"seed": seed, "status": r["status"], "items": json.loads(r["items"]),
-                      "summary": json.loads(r["summary"]) if r["status"] == "ok" else None,
+        summary = json.loads(r["summary"]) if r["status"] == "ok" else None
+        if summary is not None:
+            web, web_at = trends_web.rows_for(slug, seed)
+            if web:  # data penuh antarmuka Trends baru (30 Rising + 30 Top) menggantikan jalur lama yang dipotong
+                summary["terkait"] = {**(summary.get("terkait") or {}), **web}
+                summary["terkait_dari"] = {k: v for k, v in (summary.get("terkait_dari") or {}).items() if k not in web}
+                summary["terkait_web"] = web_at
+        items.append({"seed": seed, "status": r["status"], "items": json.loads(r["items"]), "summary": summary,
                       "source": r["source"], "error": r["error"], "fetched_at": r["fetched_at"]})
     updated = max(stamps) if stamps else None
     return {"items": items, "meta": {

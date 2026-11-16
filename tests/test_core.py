@@ -327,3 +327,19 @@ def test_related_of_derived_collects_google_rows_per_keyword():
     assert [(o["dari"], o["w"]) for o in out] == [("formasi cpns 2026", "7h"), ("formasi cpns 2026", "90h"),
                                                     ("soal cpns 2026", "7h"), ("soal cpns 2026", "90h")]
     assert out[0]["rows"][0]["query"] == "cpns 2026"
+
+
+def test_listing_uses_full_trends_web_data_when_available(tmp_path, monkeypatch):
+    from app import trends_web as tw
+    monkeypatch.setenv("TRENDWATCH_TRENDS_WEB", str(tmp_path / "w.json"))
+    core.refresh("jadippg", runner=lambda seed, geo, demo=False: {
+        "seed": seed, "items": [item("x", 1)], "sumber": {"saran": "google"}, "errors": [],
+        "trends_terkait": {"24j": [{"query": "lama", "kind": "naik", "label": "+1%", "value": 1, "breakout": False}], "7h": [], "90h": []},
+        "trends_dari": {"24j": "ppg"}})
+    before = core.listing("jadippg")["items"][0]["summary"]
+    assert before["terkait"]["24j"][0]["query"] == "lama" and "terkait_web" not in before
+    seed = core.keywords("jadippg")[0]
+    tw.write({tw.key("jadippg", seed): {"24j": {"rising": [{"query": "baru", "change": 40, "interest": 9}], "top": [], "diambil": 5.0}}})
+    after = core.listing("jadippg")["items"][0]["summary"]
+    assert after["terkait"]["24j"][0]["query"] == "baru" and after["terkait_web"] == 5.0
+    assert after["terkait"]["7h"] == [] and "24j" not in after["terkait_dari"]   # kurun lain tetap dari jalur lama
