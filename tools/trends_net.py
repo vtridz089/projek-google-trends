@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 term = sys.argv[1] if len(sys.argv) > 1 else "soal cpns"
 date = sys.argv[2] if len(sys.argv) > 2 else "now 1-d"
 hl = sys.argv[3] if len(sys.argv) > 3 else "id"
-url = "https://trends.google.com/trends/explore?" + urllib.parse.urlencode({"q": term, "geo": "ID", "date": date, "hl": hl})
+url = "https://trends.google.com/explore?" + urllib.parse.urlencode({"q": term, "geo": "ID", "date": date, "hl": hl})
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(locale=("en-US" if hl == "en" else "id-ID"), timezone_id="Asia/Jakarta", viewport={"width": 1400, "height": 1800})

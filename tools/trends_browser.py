@@ -26,7 +26,7 @@ ap.add_argument("--chrome", action="store_true")
 ap.add_argument("--cdp", metavar="URL", help="sambung ke Chrome Anda yang sudah berjalan, mis. http://localhost:9222 "
                 "(Chrome dijalankan dengan --remote-debugging-port=9222 --user-data-dir=<folder khusus>)")
 a = ap.parse_args()
-url = "https://trends.google.com/trends/explore?" + urllib.parse.urlencode({"q": a.term, "geo": a.geo, "date": a.kurun, "hl": "en"})
+url = "https://trends.google.com/explore?" + urllib.parse.urlencode({"q": a.term, "geo": a.geo, "date": a.kurun, "hl": "en"})
 bodies = []
 with sync_playwright() as p:
     if a.cdp:
