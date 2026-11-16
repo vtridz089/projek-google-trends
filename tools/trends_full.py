@@ -42,8 +42,15 @@ def fetch(pg, bodies, term, tr):
     url = "https://trends.google.com/explore?" + urllib.parse.urlencode({"q": term, "geo": a.geo, "date": tr, "hl": "en"})
     for attempt in range(4):
         bodies.clear()
-        pg.goto(url, wait_until="networkidle", timeout=90000)
-        pg.wait_for_timeout(3000)
+        try:
+            pg.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as e:  # noqa: BLE001 - halaman lambat: tetap tunggu jawaban datanya
+            print("   (halaman lambat dibuka:", str(e).splitlines()[0][:80], ")")
+        for _ in range(40):          # tunggu sampai 40 detik untuk jawaban fXqlme
+            if bodies:
+                break
+            pg.wait_for_timeout(1000)
+        pg.wait_for_timeout(1500)
         if bodies:
             try:
                 return parse_fxqlme(bodies[-1])

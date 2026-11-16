@@ -51,8 +51,15 @@ with sync_playwright() as p:
 
     pg.on("response", on_resp)
     for attempt in range(4):
-        pg.goto(url, wait_until="networkidle", timeout=90000)
-        pg.wait_for_timeout(5000)
+        try:
+            pg.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as e:  # noqa: BLE001 - halaman lambat: tetap tunggu jawaban datanya
+            print("halaman lambat dibuka:", str(e).splitlines()[0][:80])
+        for _ in range(40):          # tunggu sampai 40 detik untuk jawaban fXqlme
+            if bodies:
+                break
+            pg.wait_for_timeout(1000)
+        pg.wait_for_timeout(1500)
         if bodies or "429" not in pg.title():
             break
         pg.wait_for_timeout(8000 * (attempt + 1))
