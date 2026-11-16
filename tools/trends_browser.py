@@ -2,7 +2,7 @@
 
 Pakai:
   pip install playwright && playwright install chromium
-  python tools/trends_browser.py "soal cpns" [--kurun now+1-d] [--chrome]
+  python tools/trends_browser.py "soal cpns" [--kurun now+1-d] [--chrome] [--cdp http://localhost:9222]
 
 Membuka halaman Explore Google Trends (jendela browser tampil), menunggu jawaban ``fXqlme``, lalu mencetak jumlah dan
 isi Rising/Top. ``--chrome`` memakai Google Chrome yang terpasang (bukan Chromium bawaan Playwright).
@@ -23,12 +23,19 @@ ap.add_argument("term")
 ap.add_argument("--kurun", default="now 1-d", help='mis. "now 1-d", "now 7-d", "today 3-m"')
 ap.add_argument("--geo", default="ID")
 ap.add_argument("--chrome", action="store_true")
+ap.add_argument("--cdp", metavar="URL", help="sambung ke Chrome Anda yang sudah berjalan, mis. http://localhost:9222 "
+                "(Chrome dijalankan dengan --remote-debugging-port=9222 --user-data-dir=<folder khusus>)")
 a = ap.parse_args()
 url = "https://trends.google.com/trends/explore?" + urllib.parse.urlencode({"q": a.term, "geo": a.geo, "date": a.kurun, "hl": "en"})
 bodies = []
 with sync_playwright() as p:
-    b = p.chromium.launch(headless=False, channel="chrome" if a.chrome else None)
-    pg = b.new_context(locale="en-US").new_page()
+    if a.cdp:
+        b = p.chromium.connect_over_cdp(a.cdp)
+        ctx = b.contexts[0] if b.contexts else b.new_context()
+        pg = ctx.new_page()
+    else:
+        b = p.chromium.launch(headless=False, channel="chrome" if a.chrome else None)
+        pg = b.new_context(locale="en-US").new_page()
     pg.on("response", lambda r: bodies.append(r.text()) if "batchexecute" in r.url and "fXqlme" in r.url else None)
     for attempt in range(4):
         pg.goto(url, wait_until="networkidle", timeout=90000)
@@ -36,7 +43,7 @@ with sync_playwright() as p:
         if bodies or "429" not in pg.title():
             break
         pg.wait_for_timeout(8000 * (attempt + 1))
-    b.close()
+    pg.close() if a.cdp else b.close()
 print("permintaan fXqlme ditangkap:", len(bodies))
 for body in bodies:
     try:
