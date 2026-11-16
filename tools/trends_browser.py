@@ -36,14 +36,35 @@ with sync_playwright() as p:
     else:
         b = p.chromium.launch(headless=False, channel="chrome" if a.chrome else None)
         pg = b.new_context(locale="en-US").new_page()
-    pg.on("response", lambda r: bodies.append(r.text()) if "batchexecute" in r.url and "fXqlme" in r.url else None)
+    seen = []
+
+    def on_resp(r):
+        if "trends.google.com" not in r.url or not any(k in r.url for k in ("batchexecute", "/api/")):
+            return
+        try:
+            body = r.text()
+        except Exception:  # noqa: BLE001
+            body = ""
+        seen.append((r.url.split("?")[0].split("trends.google.com")[-1], r.status))
+        if "fXqlme" in r.url or '"fXqlme"' in body:
+            bodies.append(body)
+
+    pg.on("response", on_resp)
     for attempt in range(4):
         pg.goto(url, wait_until="networkidle", timeout=90000)
         pg.wait_for_timeout(5000)
         if bodies or "429" not in pg.title():
             break
         pg.wait_for_timeout(8000 * (attempt + 1))
+    title = pg.title()
+    try:
+        rows = pg.locator("text=/\\d+.{1,3}\\d+ of \\d+/").all_inner_texts()
+    except Exception:  # noqa: BLE001
+        rows = []
     pg.close() if a.cdp else b.close()
+print("judul halaman:", title)
+print("penomoran tabel di halaman (mis. '1-10 of 32'):", rows)
+print("permintaan data yang terlihat:", sorted(set(seen)))
 print("permintaan fXqlme ditangkap:", len(bodies))
 for body in bodies:
     try:
