@@ -8,10 +8,11 @@ from playwright.sync_api import sync_playwright
 
 term = sys.argv[1] if len(sys.argv) > 1 else "soal cpns"
 date = sys.argv[2] if len(sys.argv) > 2 else "now 1-d"
-url = "https://trends.google.com/trends/explore?" + urllib.parse.urlencode({"q": term, "geo": "ID", "date": date, "hl": "id"})
+hl = sys.argv[3] if len(sys.argv) > 3 else "id"
+url = "https://trends.google.com/trends/explore?" + urllib.parse.urlencode({"q": term, "geo": "ID", "date": date, "hl": hl})
 with sync_playwright() as p:
     b = p.chromium.launch()
-    ctx = b.new_context(locale="id-ID", timezone_id="Asia/Jakarta", viewport={"width": 1400, "height": 1800})
+    ctx = b.new_context(locale=("en-US" if hl == "en" else "id-ID"), timezone_id="Asia/Jakarta", viewport={"width": 1400, "height": 1800})
     pg = ctx.new_page()
     seen = []
 
@@ -50,5 +51,10 @@ with sync_playwright() as p:
                           [(x.get("query") or (x.get("topic") or {}).get("title"), x.get("value"), x.get("formattedValue")) for x in rl.get("rankedKeyword") or []])
             except Exception as e:  # noqa: BLE001
                 print("PARSE:", e)
+        if "batchexecute" in u:
+            import re
+            print("RPC:", re.findall(r"rpcids=([A-Za-z0-9,]+)", u), "| berisi fXqlme:", "fXqlme" in body)
+            if "fXqlme" in body:
+                print("FXQLME-JUMLAH-BARIS:", body.count('\\"'), "| contoh:", body[:500].replace("\n", " "))
         print("BODY:", body[:300].replace("\n", " "))
     b.close()

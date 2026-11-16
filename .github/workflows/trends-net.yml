@@ -9,6 +9,8 @@ on:
         default: "soal cpns"
       kurun:
         default: "now 1-d"
+      bahasa:
+        default: "en"
 
 jobs:
   net:
@@ -22,4 +24,5 @@ jobs:
       - env:
           KATA: ${{ inputs.kata }}
           KURUN: ${{ inputs.kurun }}
-        run: python tools/trends_net.py "$KATA" "$KURUN"
+          BAHASA: ${{ inputs.bahasa }}
+        run: python tools/trends_net.py "$KATA" "$KURUN" "$BAHASA"
