@@ -44,7 +44,7 @@ def parse_fxqlme(body: str) -> dict:
                         "rising": [{"query": r[0], "change": int(r[1]), "interest": int(r[2])} for r in rising],
                         "top": [{"query": r[0], "interest": int(r[1]), "change": int(r[2])} for r in top],
                     }
-                except (ValueError, IndexError, TypeError) as exc:
+                except (ValueError, IndexError, TypeError, KeyError) as exc:
                     raise WebFormatError(f"bentuk jawaban fXqlme tidak dikenali: {exc}") from exc
     raise WebFormatError("jawaban fXqlme tidak ditemukan")
 
