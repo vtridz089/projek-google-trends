@@ -120,3 +120,15 @@ def test_snapshot_roundtrip_fills_new_database_and_never_overwrites_newer(tmp_pa
     assert core.import_json(str(tmp_path / "tidak-ada.json")) == 0
     (tmp_path / "rusak.json").write_text("{bukan json", encoding="utf-8")
     assert core.import_json(str(tmp_path / "rusak.json")) == 0
+
+
+def test_akhir_pekan_tidak_berjalan(monkeypatch):
+    from datetime import datetime, time as dtime
+    from app import scheduler
+    monkeypatch.delenv("TRENDWATCH_CORE_WEEKEND", raising=False)
+    sabtu = datetime(2026, 11, 21, 7, 0, tzinfo=scheduler.tzinfo())
+    senin = datetime(2026, 11, 23, 7, 0, tzinfo=scheduler.tzinfo())
+    assert scheduler.due(sabtu, dtime(6, 0), "") is False
+    assert scheduler.due(senin, dtime(6, 0), "") is True
+    monkeypatch.setenv("TRENDWATCH_CORE_WEEKEND", "on")
+    assert scheduler.due(sabtu, dtime(6, 0), "") is True

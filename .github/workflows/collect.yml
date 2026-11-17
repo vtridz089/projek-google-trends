@@ -4,7 +4,7 @@ name: Ambil data tren harian
 # di repo ini. Dengan begitu riwayat menumpuk walaupun tidak ada server yang menyala.
 on:
   schedule:
-    - cron: "30 0 * * *"   # 00:30 UTC = 07:30 WIB
+    - cron: "30 0 * * 1-5" # Senin-Jumat 00:30 UTC = 07:30 WIB (Sabtu dan Minggu libur)
   workflow_dispatch:        # tombol "Run workflow" untuk mencoba manual
 
 permissions:

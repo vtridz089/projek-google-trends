@@ -12,7 +12,7 @@ name: Pantau topik Watchlist harian
 # dan satu topik memakai 4 pencarian per hari (rentang 4), jadi atur "rentang" ke 1 atau 2 bila topiknya banyak.
 on:
   schedule:
-    - cron: "0 1 * * *"     # 01:00 UTC = 08:00 WIB (setelah pengambilan tren harian 07.30 WIB)
+    - cron: "0 1 * * 1-5"   # Senin-Jumat 01:00 UTC = 08:00 WIB (Sabtu dan Minggu libur)
   workflow_dispatch:
     inputs:
       topik:

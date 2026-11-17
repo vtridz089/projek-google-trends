@@ -6,7 +6,7 @@ name: Riset keyword inti harian
 # Topik yang gagal tetap memakai hasil terakhir yang baik.
 on:
   schedule:
-    - cron: "30 22 * * *"   # 22:30 UTC = 05:30 WIB, selesai sebelum jam kerja
+    - cron: "30 22 * * 0-4" # Minggu-Kamis 22:30 UTC = Senin-Jumat 05:30 WIB (Sabtu dan Minggu libur)
   workflow_dispatch:
 
 permissions:

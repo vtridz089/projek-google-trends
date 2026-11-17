@@ -69,6 +69,8 @@ def due(now: datetime, at: dtime | None, last: str) -> bool:
     """now: waktu lokal (berzona). Jalan bila sudah lewat jam jadwal dan hari ini belum selesai dijalankan."""
     if at is None:
         return False
+    if now.weekday() >= 5 and os.environ.get("TRENDWATCH_CORE_WEEKEND", "").strip().lower() not in ("1", "on", "yes", "true"):
+        return False  # Sabtu dan Minggu libur (aktifkan dengan TRENDWATCH_CORE_WEEKEND=on)
     return now.time() >= at and last != now.date().isoformat()
 
 
