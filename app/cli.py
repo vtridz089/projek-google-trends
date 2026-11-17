@@ -213,6 +213,24 @@ def cmd_core_refresh(args: argparse.Namespace) -> int:
     return 1 if bad > max(2, total // 10) else 0
 
 
+def cmd_trends_serpapi(args: argparse.Namespace) -> int:
+    from . import core, serpapi_trends, trends_runner
+    try:
+        f = serpapi_trends.Fetcher(limit=args.limit)
+        wins = [(w, tr) for w, tr in trends_runner.WINDOWS if tr in (args.window or ["now 7-d"])]
+        slugs = [args.platform] if args.platform else list(core.CORE)
+        try:
+            res = trends_runner.collect(slugs, f.fetch, ulangi=args.ulangi, windows=wins, jeda=1.0, umur_jam=args.umur_jam)
+        except serpapi_trends.QuotaReached as exc:
+            print(f"Berhenti: {exc}")
+            res = None
+    except trends_runner.RunnerError as exc:
+        print(f"Galat: {exc}")
+        return 1
+    print(f"Pencarian SerpApi terpakai: {f.used}. Hasil: {res}")
+    return 0
+
+
 def cmd_trends_debug(args: argparse.Namespace) -> int:
     """Diagnosa: tampilkan jawaban mentah Google Trends (pencarian terkait) per kurun waktu untuk beberapa kata."""
     import json
@@ -287,6 +305,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--export", metavar="BERKAS", help="tulis hasil ke berkas JSON (mis. data/core_research.json)")
     p.set_defaults(func=cmd_core_refresh)
 
+    p = sub.add_parser("trends-serpapi", help="ambil Rising/Top Trends lewat SerpApi (butuh SERPAPI_KEY; kuota gratis 250/bulan)")
+    p.add_argument("--platform", help="satu platform saja (bawaan: semua)")
+    p.add_argument("--window", action="append", default=None, choices=["now 1-d", "now 7-d", "today 3-m"],
+                   help="rentang waktu (bisa diulang; bawaan: now 7-d saja, hemat kuota)")
+    p.add_argument("--limit", type=int, default=100, help="batas pencarian SerpApi per jalan (bawaan 100)")
+    p.add_argument("--umur-jam", type=float, default=24 * 6, help="lewati kata yang datanya lebih baru dari ini (jam)")
+    p.add_argument("--ulangi", action="store_true", help="ambil ulang walau data masih segar")
+    p.set_defaults(func=cmd_trends_serpapi)
     p = sub.add_parser("trends-debug", help="diagnosa: jawaban mentah Google Trends untuk beberapa kata")
     p.add_argument("--term", action="append", required=True)
     p.add_argument("--geo", default="ID")

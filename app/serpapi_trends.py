@@ -1,0 +1,81 @@
+"""Rising/Top queries dari Google Trends lewat SerpApi (serpapi.com), berjalan di server tanpa Chrome dan tanpa login.
+
+Kuota gratis SerpApi: 250 pencarian per bulan (satu kata + satu rentang waktu = satu pencarian). Karena itu secara bawaan
+hanya satu rentang (7 hari) yang diambil, dan ada batas pemakaian per jalan (``--limit``) agar kuota tidak habis.
+Kunci API dibaca dari variabel lingkungan ``SERPAPI_KEY`` (jangan ditulis di berkas).
+"""
+from __future__ import annotations
+
+import json
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from .trends_runner import RunnerError
+
+ENDPOINT = "https://serpapi.com/search.json"
+BREAKOUT = 5000
+
+
+class QuotaReached(RunnerError):
+    pass
+
+
+def api_key() -> str:
+    key = os.environ.get("SERPAPI_KEY", "").strip()
+    if not key:
+        raise RunnerError("SERPAPI_KEY belum diisi. Buat akun gratis di serpapi.com, salin API key, lalu isi variabel SERPAPI_KEY.")
+    return key
+
+
+def _num(item: dict) -> int:
+    ev = item.get("extracted_value")
+    if isinstance(ev, (int, float)):
+        return int(ev)
+    text = str(item.get("value", "")).strip().lower()
+    if "breakout" in text or "pesat" in text:
+        return BREAKOUT
+    digits = "".join(c for c in text if c.isdigit())
+    return int(digits) if digits else 0
+
+
+def parse(payload: dict) -> dict:
+    """Jawaban SerpApi -> {"rising": [...], "top": [...]} dengan bentuk yang sama seperti ``trends_web.parse_fxqlme``."""
+    rq = payload.get("related_queries")
+    if not isinstance(rq, dict):
+        return {"term": "", "rising": [], "top": []}
+    return {
+        "term": "",
+        "rising": [{"query": r["query"], "change": _num(r), "interest": 0} for r in rq.get("rising", []) if r.get("query")],
+        "top": [{"query": r["query"], "interest": _num(r), "change": 0} for r in rq.get("top", []) if r.get("query")],
+    }
+
+
+class Fetcher:
+    def __init__(self, geo: str = "ID", limit: int = 100, opener=urllib.request.urlopen, key: str | None = None):
+        self.geo, self.limit, self.used, self._open = geo, limit, 0, opener
+        self.key = key or api_key()
+
+    def fetch(self, term: str, time_range: str) -> dict | None:
+        if self.used >= self.limit:
+            raise QuotaReached(f"Batas {self.limit} pencarian untuk jalan ini tercapai; sisanya dilanjutkan pada jalan berikutnya.")
+        self.used += 1
+        qs = urllib.parse.urlencode({"engine": "google_trends", "q": term, "data_type": "RELATED_QUERIES", "geo": self.geo,
+                                     "date": time_range, "hl": "en", "api_key": self.key})
+        try:
+            with self._open(f"{ENDPOINT}?{qs}", timeout=60) as r:
+                payload = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                raise RunnerError("API key SerpApi ditolak. Periksa SERPAPI_KEY.") from exc
+            if exc.code == 429:
+                raise QuotaReached("Kuota SerpApi bulan ini habis.") from exc
+            return None
+        except (urllib.error.URLError, ValueError, TimeoutError):
+            return None
+        if payload.get("error"):
+            if "run out" in str(payload["error"]).lower():
+                raise QuotaReached("Kuota SerpApi bulan ini habis.")
+            return None
+        return parse(payload)
