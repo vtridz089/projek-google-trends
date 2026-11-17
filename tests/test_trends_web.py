@@ -64,3 +64,92 @@ def test_file_roundtrip_and_missing_or_broken_file(tmp_path, monkeypatch):
 def _parsed_lists():
     d = _parsed()
     return {"rising": d["rising"], "top": d["top"]}
+
+
+# --------------------------------------------------------------------------- pengambilan lewat Chrome (app/trends_runner.py)
+
+def _fake_fetch_factory(rising_n=30, calls=None):
+    def fetch(term, tr):
+        if calls is not None:
+            calls.append((term, tr))
+        return {"term": term, "rising": [{"query": f"{term} r{i}", "change": 100 - i, "interest": 5} for i in range(rising_n)],
+                "top": [{"query": f"{term} t", "interest": 100, "change": 1}]}
+    return fetch
+
+
+@pytest.fixture
+def runner(tmp_path, monkeypatch):
+    from app import trends_runner
+    monkeypatch.setenv("TRENDWATCH_TRENDS_WEB", str(tmp_path / "w.json"))
+    monkeypatch.setattr(trends_runner, "_job", {"running": False})
+    return trends_runner
+
+
+def test_collect_saves_after_each_topic_and_skips_fresh_ones(runner):
+    from app import trends_web as tw
+    calls = []
+    res = runner.collect(["jagoukp"], _fake_fetch_factory(calls=calls), sleep=lambda s: None, now=lambda: 1000.0)
+    assert res == {"diambil": 21, "gagal": 0, "dilewati": 0} and len(calls) == 21           # 7 topik x 3 kurun
+    rows, at = tw.rows_for("jagoukp", "UKP")
+    assert at == 1000.0 and set(rows) == {"24j", "7h", "90h"} and len(rows["24j"]) == 31
+    calls.clear()
+    res = runner.collect(["jagoukp"], _fake_fetch_factory(calls=calls), sleep=lambda s: None, now=lambda: 2000.0)
+    assert res["dilewati"] == 7 and calls == []                                            # masih segar
+    res = runner.collect(["jagoukp"], _fake_fetch_factory(calls=calls), sleep=lambda s: None, now=lambda: 2000.0, ulangi=True)
+    assert res["diambil"] == 21
+
+
+def test_failed_fetch_keeps_old_data(runner):
+    from app import trends_web as tw
+    runner.collect(["jagoukp"], _fake_fetch_factory(), sleep=lambda s: None, now=lambda: 1000.0)
+    res = runner.collect(["jagoukp"], lambda t, tr: None, sleep=lambda s: None, now=lambda: 999999.0, ulangi=True)
+    assert res["gagal"] == 21 and res["diambil"] == 0
+    assert tw.rows_for("jagoukp", "UKP")[1] == 1000.0          # data lama tetap
+
+
+def test_login_check_detects_limited_list(runner):
+    runner.check_login(_fake_fetch_factory(rising_n=30))
+    with pytest.raises(runner.LoginNeeded):
+        runner.check_login(_fake_fetch_factory(rising_n=3))
+    with pytest.raises(runner.RunnerError):
+        runner.check_login(lambda t, tr: None)
+
+
+def test_job_runs_with_progress_and_reports_login_needed(runner, monkeypatch):
+    class F:
+        def __init__(self, n): self.fetch = _fake_fetch_factory(rising_n=n)
+        def close(self): pass
+    runner.start_job("jagoukp", fetcher_factory=lambda: F(3), ensure=lambda: None, background=False)
+    st = runner.job_state()
+    assert st["running"] is False and st["perlu_login"] is True and "login" in st["error"].lower()
+    monkeypatch.setattr(runner.time, "sleep", lambda s: None)
+    runner.start_job("jagoukp", fetcher_factory=lambda: F(30), ensure=lambda: None, background=False)
+    st = runner.job_state()
+    assert st["error"] is None and st["result"]["diambil"] == 21 and st["done"] == st["total"] == 7
+
+
+def test_chrome_path_env_and_availability(runner, monkeypatch, tmp_path):
+    fake = tmp_path / "chrome.exe"
+    fake.write_text("x")
+    monkeypatch.setenv("TRENDWATCH_CHROME", str(fake))
+    assert runner.chrome_path() == str(fake) and runner.available()["chrome"] is True
+    monkeypatch.setenv("TRENDWATCH_CHROME", str(tmp_path / "tidak-ada.exe"))
+    assert runner.chrome_path() is None
+
+
+def test_ensure_chrome_launches_once_and_reports_missing(runner, monkeypatch, tmp_path):
+    monkeypatch.setattr(runner, "cdp_ready", lambda port=9222: False)
+    monkeypatch.setenv("TRENDWATCH_CHROME", str(tmp_path / "tidak-ada.exe"))
+    with pytest.raises(runner.RunnerError, match="Chrome tidak ditemukan"):
+        runner.ensure_chrome()
+    fake = tmp_path / "chrome.exe"; fake.write_text("x")
+    monkeypatch.setenv("TRENDWATCH_CHROME", str(fake))
+    monkeypatch.setenv("TRENDWATCH_CHROME_PROFILE", str(tmp_path / "profil"))
+    launched = []
+    state = {"n": 0}
+    def ready(port=9222):
+        state["n"] += 1
+        return state["n"] > 2          # siap setelah beberapa pengecekan
+    monkeypatch.setattr(runner, "cdp_ready", ready)
+    runner.ensure_chrome(launcher=lambda cmd: launched.append(cmd), wait=5)
+    assert len(launched) == 1 and "--remote-debugging-port=9222" in launched[0] and any("profil" in a for a in launched[0])
