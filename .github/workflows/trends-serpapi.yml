@@ -5,8 +5,9 @@ name: Trends lengkap lewat SerpApi
 # jadi paling banyak sekitar 240 per bulan. Kata yang datanya masih baru dilewati, sehingga 96 topik terisi bertahap.
 # Wajib: secret repo SERPAPI_KEY (Settings > Secrets and variables > Actions).
 on:
-  schedule:
-    - cron: "0 23 * * 0"   # Minggu 23:00 UTC = Senin 06:00 WIB
+  # JADWAL OTOMATIS SEDANG DIMATIKAN (hanya jalan lewat tombol Run workflow). Untuk mengaktifkan, hapus tanda # di dua baris ini:
+  # schedule:
+  #   - cron: "0 23 * * 0"   # Minggu 23:00 UTC = Senin 06:00 WIB
   workflow_dispatch:
     inputs:
       limit:
