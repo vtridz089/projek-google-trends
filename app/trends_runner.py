@@ -97,7 +97,8 @@ def ensure_chrome(port: int = CDP_PORT, launcher=subprocess.Popen, wait: float =
         raise RunnerError("Chrome tidak ditemukan di komputer ini. Pasang Google Chrome, atau isi TRENDWATCH_CHROME dengan lokasi chrome.exe.")
     os.makedirs(profile_dir(), exist_ok=True)
     launcher([path, f"--remote-debugging-port={port}", f"--user-data-dir={profile_dir()}", "--no-first-run",
-              "--no-default-browser-check", "https://accounts.google.com/"])
+              "--no-default-browser-check", "--disable-blink-features=AutomationControlled",
+              "--lang=en-US", "https://accounts.google.com/"])
     end = time.time() + wait
     while time.time() < end:
         if cdp_ready(port):
