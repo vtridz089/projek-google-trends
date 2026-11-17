@@ -429,7 +429,7 @@ function row(r, d) {
   dig.addEventListener("click", () => openResearch(r.query));
   const serp = el("a", { href: "https://www.google.com/search?q=" + encodeURIComponent(r.query) + (d.geo ? "&gl=" + d.geo.toLowerCase() : ""),
                          target: "_blank", rel: "noopener noreferrer", text: "Google ↗", title: "Lihat hasil pencarian untuk keyword ini" });
-  const tags = el("div", { class: "tags" }, [el("span", { class: "pill", text: r.maksud_label })]);
+  const tags = el("div", { class: "tags" }, r.maksud_label ? [el("span", { class: "pill", text: r.maksud_label })] : []);
   if (r.baru) tags.append(el("span", { class: "pill pat-baru", text: "baru" }));
   if (r.pertanyaan) tags.append(el("span", { class: "pill", text: "pertanyaan" }));
   if (r.longtail) tags.append(el("span", { class: "pill", text: "long-tail" }));
@@ -710,7 +710,7 @@ function trendsPanel(it) {
     const gain = { label: r.label, value: r.value, breakout: r.breakout };
     // Hanya angka Google untuk kurun terpilih; kenaikan hasil hitungan lain tidak dicampur ke baris ini.
     const x = Object.assign({ maksud_label: "", pertanyaan: false, longtail: false }, full,
-      { rank: i + 1, sumber: [kind === "naik" ? "naik" : "populer"], naik_24j: null, naik_7h: null, naik_90h: null, baru: false });
+      { query: r.query, rank: i + 1, sumber: [kind === "naik" ? "naik" : "populer"], naik_24j: null, naik_7h: null, naik_90h: null, baru: false });
     if (kind === "naik" && r.value > 0) x["naik_" + w] = gain;
     return x;
   };
@@ -747,7 +747,7 @@ function trendsPanel(it) {
         const tags = li.querySelector(".tags");
         if (kind !== "naik") tags.append(el("span", { class: "pill", text: "Top " + r.value + (r.change != null ? " · " + (r.change > 0 ? "+" : "") + r.change + "%" : ""), title: "Nilai popularitas Google Trends (0 sampai 100) dan perubahannya" }));
         else if (r.value <= 0) tags.append(el("span", { class: "pill", text: r.label, title: "Perubahan dibanding periode sebelumnya" }));
-        else if (r.interest != null) tags.append(el("span", { class: "pill", text: "minat " + r.interest, title: "Minat penelusuran (0 sampai 100)" }));
+        else if (r.interest) tags.append(el("span", { class: "pill", text: "minat " + r.interest, title: "Minat penelusuran (0 sampai 100)" }));
         return li;
       })));
     return box;
