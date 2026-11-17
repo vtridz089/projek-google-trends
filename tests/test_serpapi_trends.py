@@ -53,3 +53,20 @@ def test_collect_satu_rentang(tmp_path, monkeypatch):
         trends_runner.collect(["jadiasn"], f.fetch, windows=[("7h", "now 7-d")], sleep=lambda s: None)
     data = trends_web.load()
     assert data and all(set(e) == {"7h"} for e in data.values())
+
+
+def test_beberapa_key_berpindah_saat_kuota_habis(monkeypatch):
+    monkeypatch.setenv("SERPAPI_KEY", "k1, k2\nk3")
+    assert sp.api_keys() == ["k1", "k2", "k3"]
+    pakai = []
+
+    def opener(url, timeout=0):
+        pakai.append(url)
+        if "api_key=k1" in url:
+            return Resp(json.dumps({"error": "Your account has run out of searches."}).encode())
+        return Resp(json.dumps(PAYLOAD).encode())
+
+    f = sp.Fetcher(limit=10, opener=opener)
+    assert f.fetch("a", "now 7-d")["top"]
+    assert f.fetch("b", "now 7-d")["top"]
+    assert "api_key=k1" in pakai[0] and all("api_key=k2" in u for u in pakai[1:])
