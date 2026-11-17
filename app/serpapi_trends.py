@@ -62,7 +62,11 @@ def parse(payload: dict) -> dict:
 class Fetcher:
     def __init__(self, geo: str = "ID", limit: int = 100, opener=urllib.request.urlopen, key: str | None = None):
         self.geo, self.limit, self.used, self._open = geo, limit, 0, opener
+        self.errors: dict[str, int] = {}   # alasan kegagalan -> jumlah, untuk laporan
         self.keys = [key] if key else api_keys()
+
+    def _err(self, why: str) -> None:
+        self.errors[why] = self.errors.get(why, 0) + 1
 
     def fetch(self, term: str, time_range: str) -> dict | None:
         if self.used >= self.limit:
@@ -82,15 +86,21 @@ class Fetcher:
             with self._open(f"{ENDPOINT}?{qs}", timeout=60) as r:
                 payload = json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
+            self._err(f"HTTP {exc.code}")
             if exc.code in (401, 403):
                 raise RunnerError("API key SerpApi ditolak. Periksa SERPAPI_KEY.") from exc
             if exc.code == 429:
                 raise QuotaReached("Kuota SerpApi bulan ini habis.") from exc
             return None
-        except (urllib.error.URLError, ValueError, TimeoutError):
+        except (urllib.error.URLError, ValueError, TimeoutError) as exc:
+            self._err(type(exc).__name__)
             return None
         if payload.get("error"):
-            if "run out" in str(payload["error"]).lower():
+            msg = str(payload["error"])
+            if "run out" in msg.lower():
                 raise QuotaReached("Kuota SerpApi bulan ini habis.")
+            if "any results" in msg.lower() or "no results" in msg.lower():
+                return {"term": "", "rising": [], "top": []}  # Google memang tidak punya data: bukan kegagalan, jangan diulang terus
+            self._err(msg[:120])
             return None
         return parse(payload)

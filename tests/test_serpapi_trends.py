@@ -70,3 +70,15 @@ def test_beberapa_key_berpindah_saat_kuota_habis(monkeypatch):
     assert f.fetch("a", "now 7-d")["top"]
     assert f.fetch("b", "now 7-d")["top"]
     assert "api_key=k1" in pakai[0] and all("api_key=k2" in u for u in pakai[1:])
+
+
+def test_tanpa_hasil_dari_google_bukan_kegagalan():
+    f = sp.Fetcher(limit=5, opener=opener_for({"error": "Google Trends hasn't returned any results for this query."}), key="k")
+    assert f.fetch("bimbel x", "now 7-d") == {"term": "", "rising": [], "top": []}
+    assert f.errors == {}
+
+
+def test_kegagalan_lain_dicatat_alasannya():
+    f = sp.Fetcher(limit=5, opener=opener_for({"error": "Something odd"}), key="k")
+    assert f.fetch("x", "now 7-d") is None
+    assert f.errors == {"Something odd": 1}

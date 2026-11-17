@@ -228,6 +228,8 @@ def cmd_trends_serpapi(args: argparse.Namespace) -> int:
         print(f"Galat: {exc}")
         return 1
     print(f"Pencarian SerpApi terpakai: {f.used}. Hasil: {res}")
+    for why, n in f.errors.items():
+        print(f"  gagal {n}x: {why}")
     return 0
 
 
