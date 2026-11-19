@@ -244,20 +244,16 @@ dan kerangka bab laporan PKL di [docs/kerangka-laporan.md](docs/kerangka-laporan
 - Ekspor ke Excel (.xlsx) dengan grafik.
 
 
-## Data Trends lengkap (Rising dan Top sampai 30 baris)
+## Data Trends lengkap (Rising dan Top) lewat SerpApi
 
-Jalur data Google Trends yang dipakai server hanya memberi 3 sampai 8 baris Rising. Antarmuka baru situs Trends memberi sampai
-30 Rising dan 30 Top (dengan angka perubahan), tetapi **hanya ke sesi browser yang sudah login ke akun Google**, sehingga tidak bisa
-diambil dari server. Cara mengambilnya di komputer Anda:
+Jalur data Google Trends yang dipakai server langsung hanya memberi 3 sampai 8 baris Rising. Untuk daftar yang lebih lengkap, aplikasi memakai
+**SerpApi** (serpapi.com; kuota gratis 250 pencarian per bulan). Hasilnya disimpan di `data/trends_web.json` dan dipakai panel Trends (kurun 7 hari).
 
-1. Pasang sekali: `pip install -r requirements.txt playwright` lalu `playwright install chromium`.
-2. Tutup semua jendela Chrome, lalu buka Chrome dengan profil khusus dan port debug (Windows):
-   `& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\chrome-trends"`
-3. Di jendela itu, **login ke akun Google** (disarankan akun khusus, bukan akun pribadi) dan biarkan jendelanya terbuka.
-4. Uji satu kata: `python tools/trends_browser.py "soal cpns" --cdp http://localhost:9222` (harus `RISING=30 TOP=30`).
-5. Ambil semua keyword inti: `python tools/trends_full.py --cdp http://localhost:9222` (sekitar 1 jam; bisa dihentikan dan dilanjutkan;
-   `--platform jadiasn` untuk satu platform).
-6. Hasilnya di `data/trends_web.json`. Muat ulang aplikasi; panel Trends memakainya otomatis. Untuk membagikan ke tim: `git add data/trends_web.json`, commit, push.
+1. Buat akun di serpapi.com dan salin API key. Simpan sebagai secret repositori `SERPAPI_KEY` (Settings, Secrets and variables, Actions).
+   Beberapa key boleh dipisah koma; yang kuotanya habis dilewati.
+2. Jalankan workflow **Trends lengkap lewat SerpApi** (Actions, Run workflow). Jadwal mingguannya sedang dimatikan; aktifkan dengan membuka tanda `#`
+   pada bagian `schedule` di `.github/workflows/trends-serpapi.yml`.
+3. Lokal: `SERPAPI_KEY=... python -m app.cli trends-serpapi --platform jadiasn --limit 10` (`--window` untuk kurun lain, `--ulangi` untuk memaksa).
 
-Catatan: ini otomatisasi browser pada layanan Google dan memakai antarmuka internal yang bisa berubah sewaktu-waktu. Bila gagal, aplikasi
-tetap memakai data dari jalur lama.
+Satu keyword di satu kurun memakai satu pencarian. Riset penuh 96 keyword sehari sekali (1 kurun) butuh sekitar 2.880 pencarian per bulan, jadi
+paket berbayar. Kata yang tidak punya data di Google dicatat sebagai kosong dan tidak diulang terus.

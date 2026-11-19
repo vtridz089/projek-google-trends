@@ -46,11 +46,9 @@
             </div>
             <div class="actions">
               <button type="button" class="primary" id="corerefresh" title="Riset ulang semua keyword inti platform ini dari Google (beberapa menit, jalan di latar belakang)">Perbarui dari Google</button>
-              <button type="button" id="coreweb" title="Ambil Rising dan Top lengkap (sampai 30 baris) lewat Chrome yang login ke Google. Hanya bisa bila aplikasi berjalan di komputer Anda.">Ambil data lengkap Trends</button>
               <button type="button" id="coredemo" title="Isi dengan data contoh (bukan dari Google) untuk melihat tampilannya">Data contoh</button>
             </div>
           </div>
-          <p class="notice" id="webstat" hidden></p>
           <p class="notice" id="corenote" hidden></p>
           <div class="seg" id="corewin" role="group" aria-label="Fokus kurun waktu">
             <span class="sub">Fokus kurun waktu</span>
@@ -701,7 +699,7 @@ function trendsPanel(it) {
     wrap.append(el("p", { class: "sub", text: "Google tidak mengembalikan pencarian terkait untuk topik ini dalam " + WIN_LABEL[w] + " terakhir (pencariannya terlalu kecil); hasil yang sama akan terlihat di trends.google.com. Coba kurun waktu lain di atas." }));
     return wrap;
   }
-  if ((it.summary || {}).terkait_web) wrap.append(el("p", { class: "sub", text: "Data lengkap antarmuka Google Trends (sampai 30 Rising dan 30 Top), diambil " + fmtStamp((it.summary || {}).terkait_web) + "." }));
+  if ((it.summary || {}).terkait_web) wrap.append(el("p", { class: "sub", text: "Data Rising dan Top lengkap dari SerpApi, diambil " + fmtStamp((it.summary || {}).terkait_web) + "." }));
   const dari = ((it.summary || {}).terkait_dari || {})[w];
   if (dari) wrap.append(el("p", { class: "notice", text: "Google tidak punya data untuk “" + it.seed.toLowerCase() + "” pada kurun ini, jadi yang ditampilkan adalah data kata yang lebih umum: “" + dari + "”." }));
   const turunan = ((it.summary || {}).turunan || []).filter(t => t.w === w);
@@ -866,40 +864,6 @@ async function loadCore() {
     }
   } catch (err) { $("coremeta").textContent = err.message; }
 }
-// Data lengkap Trends (Chrome yang login ke Google di komputer ini, digerakkan aplikasi).
-let webTimer = null, webWasRunning = false, webOk = null;
-async function loadWeb() {
-  try {
-    const d = await api("/api/trends-web");
-    webOk = d.tersedia;
-    const j = d.job || {}, btn = $("coreweb"), box = $("webstat");
-    btn.disabled = !!j.running;
-    btn.title = webOk.siap ? btn.title : "Tidak tersedia di sini: " + (!webOk.chrome ? "Google Chrome tidak ditemukan di komputer ini. " : "") + (!webOk.playwright ? "Playwright belum terpasang (pip install playwright)." : "");
-    clearTimeout(webTimer);
-    if (j.running) {
-      webWasRunning = true;
-      box.hidden = false;
-      box.textContent = "Mengambil data lengkap Trends: " + (j.done || 0) + " dari " + (j.total || "…") + " topik" + (j.current ? " · " + j.current : "") + ". Jangan tutup jendela Chrome yang terbuka.";
-      webTimer = setTimeout(loadWeb, 3000);
-    } else if (webWasRunning) {
-      webWasRunning = false;
-      if (j.error) { box.hidden = false; box.textContent = j.error; showMsg(j.error, "err"); }
-      else { const r = j.result || {}; box.hidden = false; box.textContent = "Selesai: " + (r.diambil || 0) + " kurun diambil, " + (r.gagal || 0) + " gagal, " + (r.dilewati || 0) + " topik dilewati (sudah segar)."; }
-      loadCore();
-    }
-  } catch (_) { /* fitur opsional */ }
-}
-async function startWeb() {
-  showMsg("");
-  if (webOk && !webOk.siap) { showMsg("Fitur ini hanya bisa dipakai bila aplikasi berjalan di komputer yang punya Google Chrome dan Playwright (pip install playwright).", "err"); return; }
-  try {
-    await api("/api/platforms/" + encodeURIComponent(SLUG) + "/trends-web", { method: "POST" });
-    $("webstat").hidden = false; $("webstat").textContent = "Membuka Chrome… Bila diminta, login ke akun Google di jendela itu, lalu klik tombol ini lagi.";
-  } catch (err) { showMsg(err.message, "err"); }
-  loadWeb();
-}
-$("coreweb").addEventListener("click", startWeb);
-loadWeb();
 async function refreshCore(demo) {
   showMsg("");
   try {

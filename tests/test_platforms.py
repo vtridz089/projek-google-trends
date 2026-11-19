@@ -215,13 +215,3 @@ def test_api_history_flow(client):
     assert client.delete(base, params={"keyword": "Info CPNS"}).json()["removed"] is True
     assert client.delete(base, params={"keyword": "info cpns"}).json()["removed"] is False
     assert client.get(base, params={"status": "salah"}).status_code == 400
-
-
-def test_api_trends_web_status_and_start_guard(client, monkeypatch):
-    from app import trends_runner
-    r = client.get("/api/trends-web")
-    assert r.status_code == 200 and set(r.json()) == {"tersedia", "job", "tersimpan"}
-    monkeypatch.setattr(trends_runner, "available", lambda: {"chrome": False, "playwright": False, "siap": False})
-    r = client.post("/api/platforms/jadiasn/trends-web")
-    assert r.status_code == 400 and "Chrome" in r.json()["detail"]
-    assert client.post("/api/platforms/tidak-ada/trends-web").status_code == 404

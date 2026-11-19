@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, core, db, explore_service, history, keyword_research, news, platforms, scheduler, trends_runner, trends_web, users
+from . import auth, core, db, explore_service, history, keyword_research, news, platforms, scheduler, users
 from .categories import CATEGORIES, GPROP_LABELS, TIMEFRAMES
 from .collector import DEMO_GEO, MockCollector, get_collector, target_geo
 from .exporter import rows_to_csv
@@ -650,27 +650,6 @@ def api_core_refresh(slug: str, demo: bool = False):
     except core.CoreBusy as exc:
         raise HTTPException(409, str(exc)) from exc
     return {"platform": p.slug, "job": job}
-
-
-@app.get("/api/trends-web")
-def api_trends_web_status():
-    """Status pengambilan data Trends lengkap (butuh Chrome yang login ke Google di komputer ini) + kesiapan fitur."""
-    return {"tersedia": trends_runner.available(), "job": trends_runner.job_state(),
-            "tersimpan": len(trends_web.load())}
-
-
-@app.post("/api/platforms/{slug}/trends-web")
-def api_trends_web_start(slug: str, ulangi: bool = False):
-    """Mulai mengambil Rising/Top lengkap untuk keyword inti platform ini lewat Chrome (latar belakang)."""
-    p = _platform(slug)
-    ok = trends_runner.available()
-    if not ok["siap"]:
-        raise HTTPException(400, "Fitur ini hanya bisa dipakai bila aplikasi berjalan di komputer yang punya Google Chrome dan "
-                                 "Playwright (pip install playwright).")
-    try:
-        return {"platform": p.slug, "job": trends_runner.start_job(p.slug, ulangi=ulangi)}
-    except trends_runner.Busy as exc:
-        raise HTTPException(409, str(exc)) from exc
 
 
 @app.get("/api/platforms/{slug}/riwayat")

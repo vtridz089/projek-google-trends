@@ -48,7 +48,7 @@ def _num(item: dict) -> int:
 
 
 def parse(payload: dict) -> dict:
-    """Jawaban SerpApi -> {"rising": [...], "top": [...]} dengan bentuk yang sama seperti ``trends_web.parse_fxqlme``."""
+    """Jawaban SerpApi -> {"rising": [...], "top": [...]} dengan bentuk yang sama seperti yang disimpan ``trends_web`` (``rising`` dan ``top``)."""
     rq = payload.get("related_queries")
     if not isinstance(rq, dict):
         return {"term": "", "rising": [], "top": []}
