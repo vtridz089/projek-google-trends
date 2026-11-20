@@ -2,7 +2,7 @@ name: Trends lengkap lewat SerpApi
 
 # Mengambil Rising/Top Google Trends lewat SerpApi (tanpa Chrome, tanpa login) ke data/trends_web.json.
 # Kuota gratis SerpApi 250 pencarian/bulan: tiap jalan dibatasi 60 pencarian (satu rentang, 7 hari), seminggu sekali,
-# jadi paling banyak sekitar 240 per bulan. Kata yang datanya masih baru dilewati, sehingga 96 topik terisi bertahap.
+# jadi paling banyak sekitar 240 per bulan (kurun bawaan: 24 jam, bisa diganti saat Run workflow). Kata yang datanya masih baru dilewati, sehingga 96 topik terisi bertahap.
 # Wajib: secret repo SERPAPI_KEY (Settings > Secrets and variables > Actions).
 on:
   # JADWAL OTOMATIS SEDANG DIMATIKAN (hanya jalan lewat tombol Run workflow). Untuk mengaktifkan, hapus tanda # di dua baris ini:
@@ -13,6 +13,14 @@ on:
       limit:
         description: "Batas pencarian SerpApi untuk jalan ini"
         default: "60"
+      window:
+        description: "Kurun waktu data Trends (satu kurun = satu pencarian per keyword)"
+        type: choice
+        default: "now 1-d"
+        options:
+          - "now 1-d"
+          - "now 7-d"
+          - "today 3-m"
 
 permissions:
   contents: write
@@ -34,7 +42,7 @@ jobs:
       - name: Ambil data lewat SerpApi
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-        run: python -m app.cli trends-serpapi --window "now 7-d" --limit "${{ github.event.inputs.limit || '60' }}"
+        run: python -m app.cli trends-serpapi --window "${{ github.event.inputs.window || 'now 1-d' }}" --limit "${{ github.event.inputs.limit || '60' }}"
       - name: Simpan hasil ke repo
         run: |
           if [ -n "$(git status --porcelain data/trends_web.json)" ]; then
