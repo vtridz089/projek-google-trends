@@ -23,7 +23,12 @@
       <h1 id="pname">…</h1>
     </div>
     <div class="pnav">
-      <label class="field"><span>Pindah platform</span><select id="pswitch" aria-label="Pindah ke platform lain"></select></label>
+      <div class="field"><span id="pswlabel">Pindah platform</span>
+        <div class="pdrop" id="pdrop">
+          <button type="button" id="pdropbtn" class="pdropbtn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="pswlabel pdropbtn"></button>
+          <ul id="pdroplist" class="pdroplist" role="listbox" aria-labelledby="pswlabel" hidden></ul>
+        </div>
+        <select id="pswitch" hidden aria-hidden="true"></select></div>
       <a class="btnlink" href="/platform">Semua platform</a>
     </div>
   </div>
@@ -905,6 +910,31 @@ $("tab-riset-btn").addEventListener("click", () => showTab("riset"));
 $("corerefresh").addEventListener("click", () => refreshCore(false));
 $("coredemo").addEventListener("click", () => refreshCore(true));
 $("tab-riwayat-btn").addEventListener("click", () => showTab("riwayat"));
+function buildSwitcher(list) {
+  const btn = $("pdropbtn"), ul = $("pdroplist");
+  const logo = (p) => { const i = el("img", { class: "pdlogo", src: "/static/logos/" + encodeURIComponent(p.slug) + ".png", alt: "", width: "28", height: "28" });
+    i.addEventListener("error", () => i.remove(), { once: true }); return i; };
+  const cur = list.find(p => p.slug === SLUG);
+  btn.replaceChildren(...(cur ? [logo(cur), el("span", { class: "pdname", text: cur.name })] : [el("span", { text: "Pilih platform" })]), el("span", { class: "pdcaret", text: "▾", "aria-hidden": "true" }));
+  ul.replaceChildren(...list.map(p => {
+    const li = el("li", { role: "option", tabindex: "-1", "aria-selected": String(p.slug === SLUG), class: "pditem" }, [logo(p), el("span", { text: p.name })]);
+    const go = () => { if (p.slug !== SLUG) location.assign("/p/" + encodeURIComponent(p.slug)); else close(); };
+    li.addEventListener("click", go);
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); (li.nextElementSibling || li).focus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); (li.previousElementSibling || li).focus(); }
+      else if (e.key === "Escape") { close(); btn.focus(); }
+    });
+    return li;
+  }));
+  function close() { ul.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  btn.addEventListener("click", () => {
+    const open = ul.hidden; ul.hidden = !open; btn.setAttribute("aria-expanded", String(open));
+    if (open) (ul.querySelector('[aria-selected="true"]') || ul.firstElementChild)?.focus();
+  });
+  document.addEventListener("click", (e) => { if (!$("pdrop").contains(e.target)) close(); });
+}
 $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.value !== SLUG) location.assign("/p/" + encodeURIComponent(e.target.value)); });
 
 (async function init() {
@@ -917,6 +947,7 @@ $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.
     $("pname").textContent = me.name;
     { const lg = el("img", { class: "plogo-h", src: "/static/logos/" + encodeURIComponent(me.slug) + ".png", alt: "Logo " + me.name, width: "44", height: "44" });
       lg.addEventListener("error", () => lg.remove(), { once: true }); $("pname").prepend(lg); } document.title = "Cerekey · " + me.name;
+    buildSwitcher(list);
     $("pswitch").replaceChildren(...list.map(p => { const o = el("option", { value: p.slug, text: p.name }); if (p.slug === SLUG) o.selected = true; return o; }));
     $("seed").placeholder = "mis. " + me.news.toLowerCase() + " 2027, cara lolos " + me.news.toLowerCase();
     $("newstitle").textContent = "Berita terbaru · " + me.news;

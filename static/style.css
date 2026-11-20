@@ -547,3 +547,15 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 /* ===== Logo platform ===== */
 .pcard .plogo { flex: none; width: 56px; height: 56px; object-fit: contain; border-radius: 10px; background: #fff; border: 1px solid var(--border); }
 .plogo-h { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--border); vertical-align: middle; margin-right: 10px; }
+
+/* ===== Pindah platform dengan logo ===== */
+.pdrop { position: relative; }
+.pdropbtn { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 210px; padding: 5px 10px; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font: inherit; color: var(--text); }
+.pdropbtn .pdname { flex: 1; font-weight: 600; }
+.pdropbtn .pdcaret { color: var(--muted); }
+.pdlogo { width: 28px; height: 28px; object-fit: contain; border-radius: 6px; background: #fff; border: 1px solid var(--border); flex: none; }
+.pdroplist { position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px); max-height: 340px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+.pdroplist[hidden] { display: none; }
+.pditem { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.pditem:hover, .pditem:focus { background: var(--accent-soft); outline: none; }
+.pditem[aria-selected="true"] { font-weight: 700; }
