@@ -1,18 +1,18 @@
 name: Trends lengkap lewat SerpApi
 
 # Mengambil Rising/Top Google Trends lewat SerpApi (tanpa Chrome, tanpa login) ke data/trends_web.json.
-# Kuota gratis SerpApi 250 pencarian/bulan: tiap jalan dibatasi 60 pencarian (satu rentang, 7 hari), seminggu sekali,
-# jadi paling banyak sekitar 240 per bulan (kurun bawaan: 24 jam, bisa diganti saat Run workflow). Kata yang datanya masih baru dilewati, sehingga 96 topik terisi bertahap.
-# Wajib: secret repo SERPAPI_KEY (Settings > Secrets and variables > Actions).
+# Bawaan: tiap hari kerja (Senin-Jumat ~05:00 WIB) meriset SEMUA keyword inti untuk kurun 24 jam (satu pencarian per keyword,
+# sekitar 96 per hari, ~2.100 per bulan). Kuota gratis SerpApi 250/bulan per akun, jadi isi secret SERPAPI_KEY dengan
+# beberapa API key dipisah koma (minimal 9-10 akun); key yang kuotanya habis dilewati otomatis.
+# Selesai jauh sebelum server menarik data (08:30 WIB). Wajib: secret repo SERPAPI_KEY (Settings > Secrets and variables > Actions).
 on:
-  # JADWAL OTOMATIS SEDANG DIMATIKAN (hanya jalan lewat tombol Run workflow). Untuk mengaktifkan, hapus tanda # di dua baris ini:
-  # schedule:
-  #   - cron: "0 23 * * 0"   # Minggu 23:00 UTC = Senin 06:00 WIB
+  schedule:
+    - cron: "0 22 * * 0-4"   # Minggu-Kamis 22:00 UTC = Senin-Jumat 05:00 WIB (Sabtu dan Minggu libur)
   workflow_dispatch:
     inputs:
       limit:
         description: "Batas pencarian SerpApi untuk jalan ini"
-        default: "60"
+        default: "130"
       window:
         description: "Kurun waktu data Trends (satu kurun = satu pencarian per keyword)"
         type: choice
@@ -42,7 +42,7 @@ jobs:
       - name: Ambil data lewat SerpApi
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-        run: python -m app.cli trends-serpapi --window "${{ github.event.inputs.window || 'now 1-d' }}" --limit "${{ github.event.inputs.limit || '60' }}"
+        run: python -m app.cli trends-serpapi --window "${{ github.event.inputs.window || 'now 1-d' }}" --umur-jam 12 --limit "${{ github.event.inputs.limit || '130' }}"
       - name: Simpan hasil ke repo
         run: |
           if [ -n "$(git status --porcelain data/trends_web.json)" ]; then
