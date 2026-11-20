@@ -448,9 +448,10 @@ function row(r, d) {
   });
   return el("li", { class: "krow" }, [
     el("span", { class: "no", text: String(r.rank) }),
-    el("div", { class: "kw-wrap" }, [el("div", { class: "kw" }, [name]), tags,
-      el("div", { class: "src", text: r.sumber.map(s => SOURCE_LABEL[s]).join(" · ") }),
-      el("div", { class: "kst" }, [statusControl(r.query, d.seed), titleBtn])]),
+    el("div", { class: "kw-wrap" }, [
+      el("div", { class: "kline" }, [el("div", { class: "kw" }, [name]), tags]),
+      el("div", { class: "kmeta" }, [el("div", { class: "kst" }, [statusControl(r.query, d.seed), titleBtn]),
+        el("div", { class: "src", text: r.sumber.map(s => SOURCE_LABEL[s]).join(" · ") })])]),
     gainCell(r.naik_24j, "24 jam", 1), gainCell(r.naik_7h, "7 hari", 2), gainCell(r.naik_90h, "90 hari", 3),
     el("div", { class: "acts" }, [copy, dig, serp]),
     panel, tb.box,

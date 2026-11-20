@@ -511,3 +511,11 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 .titlebtn[aria-expanded="true"] { background: var(--accent-soft); }
 .ktitles { display: grid; gap: 6px; }
 .titlerow { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+
+/* ===== Baris keyword rapi (tidak menumpuk) ===== */
+.krow { padding: 12px 4px; }
+.krow .kline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.krow .kline .tags { margin-top: 0; gap: 4px 6px; }
+.krow .kmeta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; }
+.krow .kmeta .src { margin-top: 0; }
+.krow .kmeta .kst { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
