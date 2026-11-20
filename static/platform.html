@@ -60,7 +60,8 @@ fetch("/api/platforms").then(r => r.ok ? r.json() : Promise.reject(new Error("Da
   .then(d => {
     $("grid").replaceChildren(...d.items.map(p => el("li", {}, [
       el("a", { class: "pcard", href: "/p/" + encodeURIComponent(p.slug) }, [
-        el("span", { class: "pi", "aria-hidden": "true", text: initials(p.name) }),
+        (() => { const i = el("img", { class: "plogo", src: "/static/logos/" + encodeURIComponent(p.slug) + ".png", alt: "Logo " + p.name, loading: "lazy", width: "56", height: "56" });
+          i.addEventListener("error", () => i.replaceWith(el("span", { class: "pi", "aria-hidden": "true", text: initials(p.name) })), { once: true }); return i; })(),
         el("span", {}, [el("b", { text: p.name }), el("span", { class: "sub", text: "Berita: " + p.news })]),
       ]),
     ])));

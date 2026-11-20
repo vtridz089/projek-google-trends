@@ -543,3 +543,7 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
   .krow .acts { grid-column: 2 / -1; justify-content: flex-start; flex-wrap: wrap; gap: 6px 16px; }
   .krow .kline .tags { flex-wrap: wrap; }
 }
+
+/* ===== Logo platform ===== */
+.pcard .plogo { flex: none; width: 56px; height: 56px; object-fit: contain; border-radius: 10px; background: #fff; border: 1px solid var(--border); }
+.plogo-h { width: 44px; height: 44px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid var(--border); vertical-align: middle; margin-right: 10px; }

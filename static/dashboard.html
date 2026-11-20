@@ -914,7 +914,9 @@ $("pswitch").addEventListener("change", (e) => { if (e.target.value && e.target.
   if (list.length && !me) { location.replace("/platform"); return; }
   if (me) {
     Object.assign(PF, me);
-    $("pname").textContent = me.name; document.title = "Cerekey · " + me.name;
+    $("pname").textContent = me.name;
+    { const lg = el("img", { class: "plogo-h", src: "/static/logos/" + encodeURIComponent(me.slug) + ".png", alt: "Logo " + me.name, width: "44", height: "44" });
+      lg.addEventListener("error", () => lg.remove(), { once: true }); $("pname").prepend(lg); } document.title = "Cerekey · " + me.name;
     $("pswitch").replaceChildren(...list.map(p => { const o = el("option", { value: p.slug, text: p.name }); if (p.slug === SLUG) o.selected = true; return o; }));
     $("seed").placeholder = "mis. " + me.news.toLowerCase() + " 2027, cara lolos " + me.news.toLowerCase();
     $("newstitle").textContent = "Berita terbaru · " + me.news;
