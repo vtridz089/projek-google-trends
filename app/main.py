@@ -11,6 +11,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from html import escape as html_escape
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -80,7 +81,8 @@ app = FastAPI(title="Cerekey", lifespan=lifespan)
 
 
 _PUBLIC_PATHS = {"/static/logo.png", "/static/mark.png", "/static/favicon.png", "/api/health", "/api/session", "/api/login", "/api/register", "/api/forgot", "/api/reset",
-                 "/login", "/daftar", "/lupa", "/reset", "/static/style.css"}
+                 "/login", "/daftar", "/lupa", "/reset", "/static/style.css", "/robots.txt", "/sitemap.xml"}
+_INDEXABLE_PATHS = {"/login", "/robots.txt", "/sitemap.xml"}
 
 
 class LoginBody(BaseModel):
@@ -143,10 +145,48 @@ async def require_login(request: Request, call_next):
     return RedirectResponse("/login?" + urlencode({"next": target}), status_code=303)
 
 
+@app.middleware("http")
+async def noindex_headers(request: Request, call_next):
+    """Semua jalur selain halaman masuk, robots.txt, dan sitemap dilarang diindeks mesin pencari."""
+    resp = await call_next(request)
+    if request.url.path not in _INDEXABLE_PATHS and not request.url.path.startswith("/static/"):
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
+def _site_url(request: Request) -> str:
+    """Alamat dasar situs untuk canonical, robots.txt, dan sitemap (TRENDWATCH_BASE_URL bila diisi)."""
+    env = (os.environ.get("TRENDWATCH_BASE_URL") or "").strip().rstrip("/")
+    if env:
+        return env
+    return f"{'https' if _is_https(request) else 'http'}://{request.headers.get('host') or request.url.netloc}"
+
+
 def _auth_page(request: Request, name: str = "login.html"):
     if not auth.enabled() or (request.state.user and name == "login.html" and request.url.path != "/reset"):
         return RedirectResponse("/", status_code=303)
+    if name == "login.html" and request.url.path == "/login":
+        html = (STATIC_DIR / name).read_text(encoding="utf-8").replace("__SITE__", _site_url(request))
+        code = (os.environ.get("TRENDWATCH_GOOGLE_VERIFICATION") or "").strip()
+        tag = f'<meta name="google-site-verification" content="{html_escape(code, quote=True)}">' if code else ""
+        return Response(html.replace("<!--SEO_VERIFY-->", tag), media_type="text/html; charset=utf-8")
     return FileResponse(STATIC_DIR / name)
+
+
+@app.get("/robots.txt")
+def robots_txt(request: Request):
+    """Hanya halaman masuk yang boleh diindeks; dashboard dan API ada di balik login."""
+    body = ("User-agent: *\nAllow: /login\nDisallow: /api/\nDisallow: /p/\nDisallow: /akun\nDisallow: /daftar\nDisallow: /lupa\nDisallow: /reset\n"
+            f"\nSitemap: {_site_url(request)}/sitemap.xml\n")
+    return Response(body, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml(request: Request):
+    url = f"{_site_url(request)}/login"
+    body = ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            f"  <url><loc>{html_escape(url)}</loc></url>\n</urlset>\n")
+    return Response(body, media_type="application/xml; charset=utf-8")
 
 
 @app.get("/login")

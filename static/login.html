@@ -3,7 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Masuk · Cerekey</title>
+  <title>Cerekey · Riset Keyword Otomatis untuk Tim Konten</title>
+  <meta name="description" content="Cerekey adalah aplikasi web riset keyword otomatis: memantau keyword yang sedang naik dari Google Trends, saran pencarian Google, YouTube, dan Bing, serta Google Berita untuk 15 platform, diperbarui setiap hari kerja.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="__SITE__/login">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Cerekey">
+  <meta property="og:title" content="Cerekey · Riset Keyword Otomatis untuk Tim Konten">
+  <meta property="og:description" content="Pantau keyword yang sedang naik dari Google Trends, saran pencarian, dan berita dalam satu dashboard.">
+  <meta property="og:url" content="__SITE__/login">
+  <meta property="og:image" content="__SITE__/static/logo.png">
+  <meta name="twitter:card" content="summary">
+  <!--SEO_VERIFY-->
   <link rel="icon" type="image/png" href="/static/favicon.png">
   <link rel="stylesheet" href="/static/style.css">
   <style>
@@ -41,6 +52,11 @@
     <button class="primary" id="go" type="submit">Masuk</button>
     <div class="alt" id="alt"></div>
   </form>
+  <section class="about" style="max-width:560px; margin:28px auto 0; font-size:14px; color:var(--muted); line-height:1.6;">
+    <h2 style="font-size:16px; margin:0 0 8px; color:inherit;">Tentang Cerekey</h2>
+    <p style="margin:0 0 8px;">Cerekey adalah aplikasi web riset keyword otomatis untuk tim konten. Aplikasi ini mengumpulkan data dari Google Trends (Rising dan Top queries), saran pencarian Google, YouTube, dan Bing, serta Google Berita, lalu menampilkannya dalam satu dashboard.</p>
+    <p style="margin:0;">Data 96 keyword inti untuk 15 platform diperbarui setiap hari kerja, lengkap dengan kenaikan 24 jam, 7 hari, dan 90 hari, label maksud pencarian, saran judul, serta riwayat keyword yang dipakai.</p>
+  </section>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -57,7 +73,7 @@ const MODES = {
 const mode = MODES[location.pathname] || MODES["/login"];
 const qs = new URLSearchParams(location.search);
 const next = qs.get("next") || "/";
-document.title = mode.title + " · Cerekey";
+if (location.pathname !== "/login") document.title = mode.title + " · Cerekey";
 $("title").textContent = mode.title; $("subtitle").textContent = mode.sub; $("go").textContent = mode.btn;
 document.querySelectorAll("[data-f]").forEach(l => { l.hidden = !mode.fields.includes(l.dataset.f); });
 if (mode.pw) $("password").autocomplete = mode.pw;

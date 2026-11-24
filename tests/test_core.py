@@ -253,7 +253,8 @@ def test_default_runner_uses_youtube_and_bing(monkeypatch):
     assert seen["channels"] == ("youtube", "bing")
 
 
-def test_trends_related_is_saved_per_window_for_display():
+def test_trends_related_is_saved_per_window_for_display(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRENDWATCH_TRENDS_WEB", str(tmp_path / "trends_web.json"))
     terkait = {"24j": [{"query": "formasi cpns 2026", "kind": "populer", "label": "100", "value": 100, "breakout": False}],
                "7h": [], "90h": []}
     def runner(seed, geo, demo=False):

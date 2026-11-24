@@ -386,3 +386,26 @@ def test_accounts_persist_across_restart_and_default_db_ignores_cwd(tmp_path, mo
     monkeypatch.delenv("TRENDWATCH_DB")
     monkeypatch.chdir(tmp_path)
     assert db.db_path() == str(db.DEFAULT_DB) and db.DEFAULT_DB.is_absolute()
+
+
+def test_halaman_masuk_bisa_diindeks_dan_dashboard_tidak(monkeypatch):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    monkeypatch.setenv("TRENDWATCH_BASE_URL", "https://contoh.example")
+    monkeypatch.setenv("TRENDWATCH_GOOGLE_VERIFICATION", "abc123")
+    from app import main
+    c = TestClient(main.app)
+    r = c.get("/login")
+    assert r.status_code == 200
+    assert "X-Robots-Tag" not in r.headers
+    assert 'rel="canonical" href="https://contoh.example/login"' in r.text
+    assert 'name="google-site-verification" content="abc123"' in r.text
+    assert "Tentang Cerekey" in r.text
+    assert c.get("/daftar").headers["X-Robots-Tag"].startswith("noindex")
+    api = c.get("/api/overview")
+    assert api.headers["X-Robots-Tag"].startswith("noindex")
+    robots = c.get("/robots.txt")
+    assert "Allow: /login" in robots.text and "Disallow: /api/" in robots.text
+    assert "https://contoh.example/sitemap.xml" in robots.text
+    assert "<loc>https://contoh.example/login</loc>" in c.get("/sitemap.xml").text
