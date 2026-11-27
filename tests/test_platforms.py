@@ -19,11 +19,11 @@ def _db(tmp_path, monkeypatch):
 
 def test_fifteen_platforms_with_requested_news_terms():
     assert [(p.name, p.news) for p in platforms.PLATFORMS] == [
-        ("JagoUKP", "UKP"), ("JadiASN", "ASN"), ("JadiBUMN", "BUMN"), ("JadiCerebrum", "Cerebrum"), ("JadiPPPK", "PPPK"),
+        ("JagoUKP", "UKP"), ("JadiASN", "ASN"), ("JadiBUMN", "BUMN"), ("Cerebrum", "Cerebrum"), ("JadiPPPK", "PPPK"),
         ("JadiPRAJURIT", "PRAJURIT"), ("JadiPOLISI", "POLISI"), ("JadiPCPM", "PCPM"), ("JagoTPA", "TPA"),
         ("JadiBEASISWA", "BEASISWA"), ("JadiSEKDIN", "SEKDIN"), ("Psikoteskerja", "Psikotes kerja"),
         ("ToeflAcademy", "TOEFL"), ("JadiOJK", "OJK"), ("JadiPPG", "PPG")]
-    assert len({p.slug for p in platforms.PLATFORMS}) == 15 and all(p.slug == p.name.lower() for p in platforms.PLATFORMS)
+    assert len({p.slug for p in platforms.PLATFORMS}) == 15 and all(p.slug == p.name.lower() for p in platforms.PLATFORMS if p.slug != "jadicerebrum")  # slug lama dipertahankan agar data dan tautan tidak putus
 
 
 def test_get_is_case_insensitive_and_rejects_unknown():

@@ -17,7 +17,7 @@ PLATFORMS: tuple[Platform, ...] = (
     Platform("jagoukp", "JagoUKP", "UKP"),
     Platform("jadiasn", "JadiASN", "ASN"),
     Platform("jadibumn", "JadiBUMN", "BUMN"),
-    Platform("jadicerebrum", "JadiCerebrum", "Cerebrum"),
+    Platform("jadicerebrum", "Cerebrum", "Cerebrum"),
     Platform("jadipppk", "JadiPPPK", "PPPK"),
     Platform("jadiprajurit", "JadiPRAJURIT", "PRAJURIT"),
     Platform("jadipolisi", "JadiPOLISI", "POLISI"),
