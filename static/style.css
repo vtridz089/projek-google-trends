@@ -559,3 +559,7 @@ button#newsreload { font-size: 13px; padding: 5px 12px; }
 .pditem { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
 .pditem:hover, .pditem:focus { background: var(--accent-soft); outline: none; }
 .pditem[aria-selected="true"] { font-weight: 700; }
+
+.hacts a { color: var(--accent); font-size: 13px; text-decoration: none; }
+.hacts a:hover { text-decoration: underline; }
+.hacts a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

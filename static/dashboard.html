@@ -641,8 +641,8 @@ function renderHistory() {
   if (H.user && !users.includes(H.user)) H.user = "";
   $("h-user").replaceChildren(el("option", { value: "", text: "Semua nama" }), ...users.map(u => { const o = el("option", { value: u, text: u }); if (u === H.user) o.selected = true; return o; }));
   $("histlist").replaceChildren(...(rows.length ? rows.map(it => {
-    const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
-    dig.addEventListener("click", () => openResearch(it.keyword));
+    const dig = el("a", { href: "https://www.google.com/search?q=" + encodeURIComponent(it.keyword) + (it.geo ? "&gl=" + String(it.geo).toLowerCase() : ""),
+                          target: "_blank", rel: "noopener noreferrer", text: "Telusuri ↗", title: "Telusuri “" + it.keyword + "” di Google" });
     const flip = el("button", { type: "button", text: it.status === "dipakai" ? "Jadi Tidak" : "Jadi Dipakai", title: "Ganti pilihan" });
     flip.addEventListener("click", () => chooseStatus(it.keyword, it.status === "dipakai" ? "tidak" : "dipakai"));
     const del = el("button", { type: "button", text: "Hapus", title: "Hapus dari riwayat" });
