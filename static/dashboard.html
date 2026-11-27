@@ -187,7 +187,7 @@
             </div>
             <div class="actions"><button type="button" id="hcsv">Unduh CSV</button></div>
           </div>
-          <p class="sub" style="margin:0 0 8px">Semua keyword yang sudah ditandai Dipakai atau Tidak di platform ini, dari topik mana pun dan oleh siapa pun. Tidak perlu mencari topiknya lagi.</p>
+          <p class="sub" style="margin:0 0 8px">Semua keyword yang sudah ditandai Dipakai atau Tidak di platform ini, dari topik mana pun dan oleh siapa pun. Saring menurut nama untuk melihat tandanya saja.</p>
           <div class="ktools">
             <span class="seg" role="group" aria-label="Saring riwayat">
               <button type="button" id="h-all" aria-pressed="true">Semua</button>
@@ -195,6 +195,7 @@
               <button type="button" id="h-tidak" aria-pressed="false">Tidak</button>
             </span>
             <label>Topik <select id="h-topic"><option value="">Semua topik</option></select></label>
+            <label>Nama <select id="h-user"><option value="">Semua nama</option></select></label>
             <label>Cari <input type="search" id="h-q" placeholder="cari keyword" aria-label="Cari di riwayat"></label>
           </div>
           <div class="hhead" aria-hidden="true"><span>Keyword</span><span>Status</span><span>Topik</span><span>Ditandai</span><span></span></div>
@@ -613,7 +614,7 @@ async function loadNews(refresh) {
 }
 
 // ---- riwayat keyword (satu tab sendiri; berlaku untuk seluruh platform, tidak terikat topik yang sedang dicari)
-const H = { status: "", topic: "", q: "", data: null };
+const H = { status: "", topic: "", user: "", q: "", data: null };
 function fmtDate(s) {
   const t = Date.parse(String(s).replace(" ", "T") + "Z"); if (isNaN(t)) return "";
   return new Date(t).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
@@ -621,7 +622,7 @@ function fmtDate(s) {
 const histRows = () => {
   if (!H.data) return [];
   const q = H.q.toLowerCase();
-  return H.data.items.filter(it => (!H.status || it.status === H.status) && (!H.topic || it.seed === H.topic) && (!q || it.keyword.toLowerCase().includes(q)));
+  return H.data.items.filter(it => (!H.status || it.status === H.status) && (!H.topic || it.seed === H.topic) && (!H.user || (it.user || "") === H.user) && (!q || it.keyword.toLowerCase().includes(q)));
 };
 function renderHistory() {
   const d = H.data; if (!d) return;
@@ -636,6 +637,9 @@ function renderHistory() {
   const topics = [...new Set(d.items.map(it => it.seed).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
   if (H.topic && !topics.includes(H.topic)) H.topic = "";
   $("h-topic").replaceChildren(el("option", { value: "", text: "Semua topik" }), ...topics.map(t => { const o = el("option", { value: t, text: t }); if (t === H.topic) o.selected = true; return o; }));
+  const users = [...new Set(d.items.map(it => it.user).filter(Boolean))].sort((a, b) => a.localeCompare(b, "id"));
+  if (H.user && !users.includes(H.user)) H.user = "";
+  $("h-user").replaceChildren(el("option", { value: "", text: "Semua nama" }), ...users.map(u => { const o = el("option", { value: u, text: u }); if (u === H.user) o.selected = true; return o; }));
   $("histlist").replaceChildren(...(rows.length ? rows.map(it => {
     const dig = el("button", { type: "button", text: "Telusuri", title: "Pakai sebagai seed baru" });
     dig.addEventListener("click", () => openResearch(it.keyword));
@@ -904,6 +908,7 @@ $("newsreload").addEventListener("click", () => loadNews(true));
 for (const [id, v] of [["h-all", ""], ["h-dipakai", "dipakai"], ["h-tidak", "tidak"]]) $(id).addEventListener("click", () => { H.status = v; renderHistory(); });
 $("h-q").addEventListener("input", (e) => { H.q = e.target.value.trim(); renderHistory(); });
 $("h-topic").addEventListener("change", (e) => { H.topic = e.target.value; renderHistory(); });
+$("h-user").addEventListener("change", (e) => { H.user = e.target.value; renderHistory(); });
 $("hcsv").addEventListener("click", downloadHistoryCsv);
 $("tab-inti-btn").addEventListener("click", () => showTab("inti"));
 $("tab-riset-btn").addEventListener("click", () => showTab("riset"));
